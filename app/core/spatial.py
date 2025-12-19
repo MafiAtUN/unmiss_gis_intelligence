@@ -45,7 +45,8 @@ def spatial_join_point_to_polygons(
 def get_admin_hierarchy(
     point: Point,
     admin_layers: Dict[str, gpd.GeoDataFrame],
-    crs: str = "EPSG:4326"
+    crs: str = "EPSG:4326",
+    include_ids: bool = False
 ) -> Dict[str, Optional[str]]:
     """
     Get administrative hierarchy for a point by spatial join.
@@ -54,9 +55,11 @@ def get_admin_hierarchy(
         point: Shapely Point geometry
         admin_layers: Dictionary mapping layer names to GeoDataFrames
         crs: CRS string
+        include_ids: If True, also return feature_id for each admin level
         
     Returns:
-        Dictionary with state, county, payam, boma keys and matched names
+        Dictionary with state, county, payam, boma keys and matched names.
+        If include_ids=True, also includes state_id, county_id, payam_id, boma_id.
     """
     hierarchy = {
         "state": None,
@@ -64,6 +67,14 @@ def get_admin_hierarchy(
         "payam": None,
         "boma": None,
     }
+    
+    if include_ids:
+        hierarchy.update({
+            "state_id": None,
+            "county_id": None,
+            "payam_id": None,
+            "boma_id": None,
+        })
     
     # Join order: boma -> payam -> county -> state
     layer_order = ["admin4_boma", "admin3_payam", "admin2_county", "admin1_state"]
@@ -86,6 +97,23 @@ def get_admin_hierarchy(
         if joined is not None and not joined.empty:
             # Get the first match (should be only one for point-in-polygon)
             match = joined.iloc[0]
+            
+            # Get feature_id if requested
+            feature_id = None
+            if include_ids:
+                if "feature_id" in joined.columns:
+                    feature_id = match.get("feature_id")
+                elif "feature_id" in gdf.columns:
+                    # Try to get from index
+                    if gdf.index.name == "feature_id" or "feature_id" in gdf.index.names:
+                        feature_id = match.name if hasattr(match, 'name') else None
+                    else:
+                        # Try to find feature_id in the match
+                        for idx in gdf.index:
+                            if gdf.loc[idx, "geometry"].contains(point) or gdf.loc[idx, "geometry"].touches(point):
+                                feature_id = str(idx)
+                                break
+            
             # Try to find name field
             name_field = None
             for field in ["name", "NAME", "Name", "admin4Name", "admin3Name", "admin2Name", "admin1Name"]:
@@ -99,9 +127,16 @@ def get_admin_hierarchy(
                 # Fallback: use the name from the original gdf if available
                 # Get feature_id from joined result
                 if "feature_id" in joined.columns:
-                    feature_id = match.get("feature_id")
-                    if feature_id and feature_id in gdf.index:
-                        hierarchy[layer_map[layer_name]] = gdf.loc[feature_id, "name"]
+                    feature_id_for_name = match.get("feature_id")
+                    if feature_id_for_name and feature_id_for_name in gdf.index:
+                        hierarchy[layer_map[layer_name]] = gdf.loc[feature_id_for_name, "name"]
+                        if include_ids and not feature_id:
+                            feature_id = feature_id_for_name
+            
+            # Store feature_id if requested
+            if include_ids and feature_id:
+                id_key = f"{layer_map[layer_name]}_id"
+                hierarchy[id_key] = str(feature_id)
     
     return hierarchy
 

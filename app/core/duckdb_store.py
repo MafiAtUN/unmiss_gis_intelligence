@@ -598,28 +598,28 @@ class DuckDBStore:
             # Get the next ID using helper method
             next_id = self._get_next_id("geocode_cache")
             
-        self.conn.execute("""
-            INSERT INTO geocode_cache
-                (id, input_text, normalized_text, resolved_layer, feature_id, matched_name,
-             score, lon, lat, state, county, payam, boma, village, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, [
-                next_id,
-            result.get("input_text"),
-            result.get("normalized_text"),
-            result.get("resolved_layer"),
-            result.get("feature_id"),
-            result.get("matched_name"),
-            result.get("score"),
-            result.get("lon"),
-            result.get("lat"),
-            result.get("state"),
-            result.get("county"),
-            result.get("payam"),
-            result.get("boma"),
-            result.get("village"),
-            datetime.now()
-        ])
+            self.conn.execute("""
+                INSERT INTO geocode_cache
+                    (id, input_text, normalized_text, resolved_layer, feature_id, matched_name,
+                 score, lon, lat, state, county, payam, boma, village, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                    next_id,
+                result.get("input_text"),
+                result.get("normalized_text"),
+                result.get("resolved_layer"),
+                result.get("feature_id"),
+                result.get("matched_name"),
+                result.get("score"),
+                result.get("lon"),
+                result.get("lat"),
+                result.get("state"),
+                result.get("county"),
+                result.get("payam"),
+                result.get("boma"),
+                result.get("village"),
+                datetime.now()
+            ])
         except Exception as e:
             # Log error but don't fail the geocoding operation
             import logging
@@ -656,6 +656,76 @@ class DuckDBStore:
                 "properties": json.loads(result[4]) if result[4] else {}
             }
         return None
+    
+    def get_admin_hierarchy_with_ids(self, lon: float, lat: float) -> Dict[str, Optional[str]]:
+        """
+        Get administrative hierarchy with feature IDs for a point using spatial queries.
+        
+        Args:
+            lon: Longitude
+            lat: Latitude
+            
+        Returns:
+            Dictionary with state, county, payam, boma, state_id, county_id, payam_id, boma_id
+        """
+        from shapely.geometry import Point
+        from shapely import wkb
+        
+        hierarchy = {
+            "state": None,
+            "county": None,
+            "payam": None,
+            "boma": None,
+            "state_id": None,
+            "county_id": None,
+            "payam_id": None,
+            "boma_id": None,
+        }
+        
+        point = Point(lon, lat)
+        
+        # Query each admin layer to find which polygon contains the point
+        # Order: boma -> payam -> county -> state
+        layer_order = [
+            ("admin4_boma", "boma", "boma_id"),
+            ("admin3_payam", "payam", "payam_id"),
+            ("admin2_county", "county", "county_id"),
+            ("admin1_state", "state", "state_id"),
+        ]
+        
+        for layer_name, name_key, id_key in layer_order:
+            try:
+                # Get all features from this layer
+                # Use centroid as a quick filter first (if point is far from centroid, skip detailed check)
+                results = self.conn.execute(f"""
+                    SELECT feature_id, name, geometry_wkb, centroid_lon, centroid_lat
+                    FROM {layer_name}
+                    WHERE centroid_lon IS NOT NULL AND centroid_lat IS NOT NULL
+                """).fetchall()
+                
+                # Check each polygon to see if it contains the point
+                for feature_id, name, geometry_wkb, centroid_lon, centroid_lat in results:
+                    if geometry_wkb:
+                        try:
+                            # Quick distance check first (rough approximation)
+                            if centroid_lon and centroid_lat:
+                                # Skip if point is very far from centroid (rough check)
+                                # This is approximate but helps performance
+                                dist_approx = ((lon - centroid_lon)**2 + (lat - centroid_lat)**2)**0.5
+                                if dist_approx > 1.0:  # Skip if more than ~1 degree away (rough)
+                                    continue
+                            
+                            geometry = wkb.loads(geometry_wkb, hex=True)
+                            if geometry.contains(point) or geometry.touches(point):
+                                hierarchy[name_key] = name
+                                hierarchy[id_key] = str(feature_id)
+                                break  # Found match, move to next layer
+                        except Exception:
+                            continue
+            except Exception:
+                continue
+        
+        return hierarchy
     
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
@@ -886,11 +956,11 @@ class DuckDBStore:
             # Strategy 3: If still no results, search all villages (no constraints)
             # This is a last resort - we'll filter by constraints later in the matching logic
             if len(villages) == 0:
-        villages = self.conn.execute("""
-            SELECT village_id, name, normalized_name, lon, lat,
-                   state, county, payam, boma, data_source, verified
-            FROM villages
-        """).fetchall()
+                villages = self.conn.execute("""
+                    SELECT village_id, name, normalized_name, lon, lat,
+                           state, county, payam, boma, data_source, verified
+                    FROM villages
+                """).fetchall()
         
         # Build search strings list
         search_strings = []
