@@ -7,6 +7,7 @@ from shapely import wkb
 import json
 from datetime import datetime
 from app.core.config import DUCKDB_PATH, LAYER_NAMES
+from app.core.normalization import normalize_text
 
 
 class DuckDBStore:
@@ -54,7 +55,7 @@ class DuckDBStore:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        # DuckDB auto-increments INTEGER PRIMARY KEY
+        # Note: DuckDB does NOT auto-increment INTEGER PRIMARY KEY - IDs must be generated manually
         
         # Geocode cache
         self.conn.execute("""
@@ -82,7 +83,90 @@ class DuckDBStore:
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_name_index_normalized ON name_index(normalized_name)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_cache_normalized ON geocode_cache(normalized_text)")
         
+        # Initialize villages schema
+        self._init_villages_schema()
+        
         # DuckDB is autocommit, no need for commit()
+    
+    def _get_next_id(self, table_name: str, id_column: str = "id") -> int:
+        """
+        Get the next available ID for a table.
+        
+        DuckDB does not auto-increment INTEGER PRIMARY KEY columns, so we need
+        to manually generate IDs by finding the maximum existing ID and adding 1.
+        
+        Args:
+            table_name: Name of the table
+            id_column: Name of the ID column (default: "id")
+            
+        Returns:
+            Next available ID (starts at 1 if table is empty)
+        """
+        try:
+            result = self.conn.execute(f"""
+                SELECT COALESCE(MAX({id_column}), 0) + 1 FROM {table_name}
+            """).fetchone()
+            if result and result[0] is not None:
+                return result[0]
+            return 1
+        except Exception:
+            # If table doesn't exist or query fails, start at 1
+            return 1
+    
+    def _init_villages_schema(self):
+        """Initialize villages and alternate names tables."""
+        # Villages table
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS villages (
+                village_id VARCHAR PRIMARY KEY,
+                name VARCHAR NOT NULL,
+                normalized_name VARCHAR,
+                lon DOUBLE NOT NULL,
+                lat DOUBLE NOT NULL,
+                geometry_wkb BLOB,
+                state VARCHAR,
+                county VARCHAR,
+                payam VARCHAR,
+                boma VARCHAR,
+                state_id VARCHAR,
+                county_id VARCHAR,
+                payam_id VARCHAR,
+                boma_id VARCHAR,
+                data_source VARCHAR,
+                source_id VARCHAR,
+                confidence_score DOUBLE,
+                verified BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_by VARCHAR,
+                properties TEXT
+            )
+        """)
+        
+        # Village alternate names table
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS village_alternate_names (
+                id INTEGER PRIMARY KEY,
+                village_id VARCHAR NOT NULL,
+                alternate_name VARCHAR NOT NULL,
+                normalized_alternate_name VARCHAR,
+                name_type VARCHAR,
+                source VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create indexes for villages
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_villages_bbox ON villages(lon, lat)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_villages_name ON villages(normalized_name)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_villages_state ON villages(state)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_villages_county ON villages(county)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_villages_payam ON villages(payam)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_villages_boma ON villages(boma)")
+        
+        # Create indexes for alternate names
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_alternate_names_normalized ON village_alternate_names(normalized_alternate_name)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_alternate_names_village ON village_alternate_names(village_id)")
     
     def ingest_geojson(
         self,
@@ -232,7 +316,7 @@ class DuckDBStore:
         # DuckDB is autocommit
     
     def build_name_index(self):
-        """Build name index from all layers."""
+        """Build name index from all layers and villages."""
         # Clear existing index
         self.conn.execute("DELETE FROM name_index")
         
@@ -291,14 +375,81 @@ class DuckDBStore:
                                 ))
             
             if rows:
+                # Get the next ID to start from
+                next_id = self._get_next_id("name_index")
+                
+                # Prepend ID to each row
+                rows_with_ids = [(next_id + i,) + row for i, row in enumerate(rows)]
+                
                 self.conn.executemany(
                     """
                     INSERT INTO name_index 
-                    (layer, feature_id, canonical_name, normalized_name, alias, normalized_alias, admin_codes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, layer, feature_id, canonical_name, normalized_name, alias, normalized_alias, admin_codes, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    rows
+                    rows_with_ids
                 )
+        
+        # Index villages and their alternate names
+        from app.core.normalization import normalize_text
+        
+        villages_result = self.conn.execute("""
+            SELECT village_id, name, normalized_name
+            FROM villages
+        """).fetchall()
+        
+        village_rows = []
+        for village_id, name, normalized_name in villages_result:
+            if not name:
+                continue
+            
+            # Add primary name entry
+            village_rows.append((
+                "villages",
+                village_id,
+                name,
+                normalized_name if normalized_name else normalize_text(name),
+                None,  # alias
+                None,  # normalized_alias
+                json.dumps({}),  # admin_codes
+                datetime.now()
+            ))
+        
+        # Add alternate names
+        alternate_names_result = self.conn.execute("""
+            SELECT van.village_id, van.alternate_name, van.normalized_alternate_name, v.name
+            FROM village_alternate_names van
+            JOIN villages v ON van.village_id = v.village_id
+        """).fetchall()
+        
+        for village_id, alt_name, norm_alt_name, primary_name in alternate_names_result:
+            if alt_name:
+                village_rows.append((
+                    "villages",
+                    village_id,
+                    primary_name,  # canonical name
+                    normalize_text(primary_name) if primary_name else "",
+                    alt_name,  # alias
+                    norm_alt_name if norm_alt_name else normalize_text(alt_name),
+                    json.dumps({}),
+                    datetime.now()
+                ))
+        
+        if village_rows:
+            # Get the next ID to start from
+            next_id = self._get_next_id("name_index")
+            
+            # Prepend ID to each row
+            village_rows_with_ids = [(next_id + i,) + row for i, row in enumerate(village_rows)]
+            
+            self.conn.executemany(
+                """
+                INSERT INTO name_index 
+                (id, layer, feature_id, canonical_name, normalized_name, alias, normalized_alias, admin_codes, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                village_rows_with_ids
+            )
         
         # DuckDB is autocommit
     
@@ -307,7 +458,11 @@ class DuckDBStore:
         query: str,
         layer: Optional[str] = None,
         threshold: float = 0.7,
-        limit: int = 10
+        limit: int = 10,
+        state_constraint: Optional[str] = None,
+        county_constraint: Optional[str] = None,
+        payam_constraint: Optional[str] = None,
+        boma_constraint: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Search name index with fuzzy matching.
@@ -322,11 +477,13 @@ class DuckDBStore:
             List of matching entries
         """
         from app.core.normalization import normalize_text
-        from app.core.fuzzy import fuzzy_match
+        from app.core.fuzzy import progressive_fuzzy_match, apply_context_boost
         
         normalized_query = normalize_text(query)
         
-        # Get all candidates
+        # Get all candidates (constraints will be applied after fuzzy matching)
+        # This is because name_index doesn't directly store hierarchical info
+        # We'll filter results by checking actual feature properties
         if layer:
             candidates = self.conn.execute("""
                 SELECT id, layer, feature_id, canonical_name, normalized_name, 
@@ -350,17 +507,49 @@ class DuckDBStore:
             if row[6]:  # normalized_alias
                 search_strings.append(row[6])
         
-        # Fuzzy match
-        matches = fuzzy_match(normalized_query, search_strings, threshold, limit)
+        # Use progressive fuzzy matching
+        matches = progressive_fuzzy_match(normalized_query, search_strings, threshold, limit)
+        
+        # Prepare match data for context boosting
+        match_data = []
+        for idx, row in enumerate(candidates):
+            # Extract match info from row
+            match_info = {
+                "layer": row[1],
+                "feature_id": row[2],
+                "canonical_name": row[3],
+            }
+            # Try to get admin hierarchy info from feature
+            try:
+                feature = self.get_feature(row[1], row[2])
+                if feature:
+                    props = feature.get("properties", {})
+                    if isinstance(props, dict):
+                        match_info["state"] = props.get("admin1Name") or props.get("state") or props.get("STATE")
+                        match_info["county"] = props.get("admin2Name") or props.get("county") or props.get("COUNTY")
+                        match_info["payam"] = props.get("admin3Name") or props.get("payam") or props.get("PAYAM")
+                        match_info["boma"] = props.get("admin4Name") or props.get("boma") or props.get("BOMA")
+            except:
+                pass
+            match_data.append(match_info)
+        
+        # Apply context-aware scoring boost
+        constraints = {
+            "state": state_constraint,
+            "county": county_constraint,
+            "payam": payam_constraint,
+            "boma": boma_constraint,
+        }
+        boosted_matches = apply_context_boost(matches, match_data, constraints)
         
         # Map back to entries
         results = []
-        matched_indices = {match[2] for match in matches}
+        matched_indices = {match[2] for match in boosted_matches}
         
         for idx, row in enumerate(candidates):
             if idx in matched_indices:
-                # Find matching score
-                score = next((m[1] for m in matches if m[2] == idx), 0.0)
+                # Find matching score from boosted matches
+                score = next((m[1] for m in boosted_matches if m[2] == idx), 0.0)
                 
                 results.append({
                     "id": row[0],
@@ -405,12 +594,17 @@ class DuckDBStore:
     
     def set_cache(self, result: Dict[str, Any]):
         """Cache geocode result."""
+        try:
+            # Get the next ID using helper method
+            next_id = self._get_next_id("geocode_cache")
+            
         self.conn.execute("""
             INSERT INTO geocode_cache
-            (input_text, normalized_text, resolved_layer, feature_id, matched_name,
+                (id, input_text, normalized_text, resolved_layer, feature_id, matched_name,
              score, lon, lat, state, county, payam, boma, village, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
+                next_id,
             result.get("input_text"),
             result.get("normalized_text"),
             result.get("resolved_layer"),
@@ -426,6 +620,11 @@ class DuckDBStore:
             result.get("village"),
             datetime.now()
         ])
+        except Exception as e:
+            # Log error but don't fail the geocoding operation
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to cache geocode result: {e}")
         # DuckDB is autocommit
     
     def get_geometry(self, layer: str, feature_id: str) -> Optional[Any]:
@@ -469,6 +668,568 @@ class DuckDBStore:
             "total_entries": total,
             "unique_queries": hits,
         }
+    
+    # Village management methods
+    
+    def add_village(
+        self,
+        name: str,
+        lon: float,
+        lat: float,
+        state: Optional[str] = None,
+        county: Optional[str] = None,
+        payam: Optional[str] = None,
+        boma: Optional[str] = None,
+        state_id: Optional[str] = None,
+        county_id: Optional[str] = None,
+        payam_id: Optional[str] = None,
+        boma_id: Optional[str] = None,
+        data_source: str = "manual",
+        source_id: Optional[str] = None,
+        confidence_score: Optional[float] = None,
+        verified: bool = False,
+        created_by: Optional[str] = None,
+        properties: Optional[Dict[str, Any]] = None,
+        village_id: Optional[str] = None
+    ) -> str:
+        """
+        Add a village to the database.
+        
+        Args:
+            name: Village name
+            lon: Longitude
+            lat: Latitude
+            state: State name
+            county: County name
+            payam: Payam name
+            boma: Boma name
+            state_id: State ID
+            county_id: County ID
+            payam_id: Payam ID
+            boma_id: Boma ID
+            data_source: Source of the data
+            source_id: Original ID from source
+            confidence_score: Confidence score (0.0-1.0)
+            verified: Whether human-verified
+            created_by: User/system identifier
+            properties: Additional properties as dict
+            village_id: Optional village ID (if not provided, will be generated)
+            
+        Returns:
+            village_id
+        """
+        import hashlib
+        from shapely.geometry import Point
+        from app.core.normalization import normalize_text
+        
+        # Generate village_id if not provided
+        if not village_id:
+            # Use hash of name + coordinates for consistent IDs
+            id_string = f"{name}_{lon}_{lat}"
+            village_id = hashlib.md5(id_string.encode()).hexdigest()
+        
+        # Normalize name
+        normalized_name = normalize_text(name)
+        
+        # Create point geometry
+        point = Point(lon, lat)
+        geometry_wkb = wkb.dumps(point, hex=True)
+        
+        # Serialize properties
+        properties_json = json.dumps(properties) if properties else None
+        
+        # Insert village
+        self.conn.execute("""
+            INSERT OR REPLACE INTO villages
+            (village_id, name, normalized_name, lon, lat, geometry_wkb,
+             state, county, payam, boma, state_id, county_id, payam_id, boma_id,
+             data_source, source_id, confidence_score, verified, created_by, properties, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, [
+            village_id, name, normalized_name, lon, lat, geometry_wkb,
+            state, county, payam, boma, state_id, county_id, payam_id, boma_id,
+            data_source, source_id, confidence_score, verified, created_by, properties_json
+        ])
+        
+        return village_id
+    
+    def add_alternate_name(
+        self,
+        village_id: str,
+        alternate_name: str,
+        name_type: str = "alias",
+        source: Optional[str] = None
+    ) -> int:
+        """
+        Add an alternate name for a village.
+        
+        Args:
+            village_id: Village ID
+            alternate_name: Alternate name/spelling
+            name_type: Type of name ('alias', 'variant', 'misspelling', 'translation')
+            source: Source of the alternate name
+            
+        Returns:
+            Alternate name ID
+        """
+        from app.core.normalization import normalize_text
+        
+        normalized_alternate_name = normalize_text(alternate_name)
+        
+        # Get the next ID manually (DuckDB doesn't auto-increment INTEGER PRIMARY KEY)
+        next_id = self._get_next_id("village_alternate_names")
+        
+        self.conn.execute("""
+            INSERT INTO village_alternate_names
+            (id, village_id, alternate_name, normalized_alternate_name, name_type, source)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, [next_id, village_id, alternate_name, normalized_alternate_name, name_type, source])
+        
+        return next_id
+    
+    def search_villages(
+        self,
+        query: str,
+        threshold: float = 0.7,
+        limit: int = 10,
+        include_alternates: bool = True,
+        state_constraint: Optional[str] = None,
+        county_constraint: Optional[str] = None,
+        payam_constraint: Optional[str] = None,
+        boma_constraint: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Search villages by name (including alternate names) with fuzzy matching.
+        
+        Args:
+            query: Search query
+            threshold: Minimum similarity score
+            limit: Maximum results
+            include_alternates: Whether to search alternate names too
+            
+        Returns:
+            List of matching villages
+        """
+        from app.core.normalization import normalize_text
+        from app.core.fuzzy import progressive_fuzzy_match, apply_context_boost
+        
+        normalized_query = normalize_text(query)
+        
+        # Build WHERE clause for hierarchical constraints
+        where_clauses = []
+        params = []
+        
+        # STRICT constraint filtering - CRITICAL: Only search villages within specified boundaries
+        # If constraints are specified, we MUST only return villages that match them
+        # This prevents wrong matches across states/counties
+        if state_constraint:
+            # STRICT: Only match villages where state field matches (case-insensitive)
+            # Use LIKE with % for partial matching (handles "Unity" vs "Unity State")
+            where_clauses.append("LOWER(state) LIKE LOWER(?)")
+            # Try with and without "state" suffix
+            state_param = state_constraint.replace(" state", "").strip()
+            params.append(f"%{state_param}%")
+        
+        if county_constraint:
+            # STRICT: Only match villages where county field matches
+            # Try both exact match and LIKE match
+            county_param = county_constraint.replace(" county", "").strip()
+            # Use OR to match both exact and partial
+            where_clauses.append("(LOWER(county) = LOWER(?) OR LOWER(county) LIKE LOWER(?))")
+            params.append(county_param)  # Exact match
+            params.append(f"%{county_param}%")  # Partial match
+        
+        if payam_constraint:
+            # STRICT: Only match villages where payam field matches
+            where_clauses.append("LOWER(payam) LIKE LOWER(?)")
+            payam_param = payam_constraint.replace(" payam", "").strip()
+            params.append(f"%{payam_param}%")
+        
+        if boma_constraint:
+            # STRICT: Only match villages where boma field matches
+            where_clauses.append("LOWER(boma) LIKE LOWER(?)")
+            boma_param = boma_constraint.replace(" boma", "").strip()
+            params.append(f"%{boma_param}%")
+        
+        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        
+        # Get all village names and normalized names (filtered by constraints)
+        villages = self.conn.execute(f"""
+            SELECT village_id, name, normalized_name, lon, lat,
+                   state, county, payam, boma, data_source, verified
+            FROM villages
+            WHERE {where_sql}
+        """, params).fetchall()
+        
+        # If no villages found with constraints, try fallback strategies
+        if len(villages) == 0:
+            # Strategy 1: If we have county constraint, try exact match on county (ignore state)
+            if county_constraint:
+                county_param = county_constraint.replace(" county", "").strip()
+                villages = self.conn.execute("""
+                    SELECT village_id, name, normalized_name, lon, lat,
+                           state, county, payam, boma, data_source, verified
+                    FROM villages
+                    WHERE LOWER(county) = LOWER(?)
+                """, [county_param]).fetchall()
+            
+            # Strategy 2: If still no results and we have state constraint, try state only (ignore county)
+            if len(villages) == 0 and state_constraint:
+                state_param = state_constraint.replace(" state", "").strip()
+                villages = self.conn.execute("""
+                    SELECT village_id, name, normalized_name, lon, lat,
+                           state, county, payam, boma, data_source, verified
+                    FROM villages
+                    WHERE LOWER(state) LIKE LOWER(?)
+                """, [f"%{state_param}%"]).fetchall()
+            
+            # Strategy 3: If still no results, search all villages (no constraints)
+            # This is a last resort - we'll filter by constraints later in the matching logic
+            if len(villages) == 0:
+        villages = self.conn.execute("""
+            SELECT village_id, name, normalized_name, lon, lat,
+                   state, county, payam, boma, data_source, verified
+            FROM villages
+        """).fetchall()
+        
+        # Build search strings list
+        search_strings = []
+        village_map = {}  # Map index to village data
+        
+        for idx, (v_id, name, norm_name, lon, lat, state, county, payam, boma, source, verified) in enumerate(villages):
+            search_strings.append(norm_name)
+            village_map[idx] = {
+                "village_id": v_id,
+                "name": name,
+                "normalized_name": norm_name,
+                "lon": lon,
+                "lat": lat,
+                "state": state,
+                "county": county,
+                "payam": payam,
+                "boma": boma,
+                "data_source": source,
+                "verified": verified
+            }
+        
+        # Search alternate names if requested (with constraints)
+        if include_alternates:
+            alt_where_clauses = []
+            alt_params = []
+            
+            # STRICT constraint filtering for alternate names too
+            if state_constraint:
+                alt_where_clauses.append("LOWER(v.state) LIKE LOWER(?)")
+                state_param = state_constraint.replace(" state", "").strip()
+                alt_params.append(f"%{state_param}%")
+            if county_constraint:
+                alt_where_clauses.append("LOWER(v.county) LIKE LOWER(?)")
+                county_param = county_constraint.replace(" county", "").strip()
+                alt_params.append(f"%{county_param}%")
+            if payam_constraint:
+                alt_where_clauses.append("LOWER(v.payam) LIKE LOWER(?)")
+                payam_param = payam_constraint.replace(" payam", "").strip()
+                alt_params.append(f"%{payam_param}%")
+            if boma_constraint:
+                alt_where_clauses.append("LOWER(v.boma) LIKE LOWER(?)")
+                boma_param = boma_constraint.replace(" boma", "").strip()
+                alt_params.append(f"%{boma_param}%")
+            
+            alt_where_sql = " AND ".join(alt_where_clauses) if alt_where_clauses else "1=1"
+            
+            alternates = self.conn.execute(f"""
+                SELECT van.village_id, van.alternate_name, van.normalized_alternate_name,
+                       v.village_id, v.name, v.normalized_name, v.lon, v.lat,
+                       v.state, v.county, v.payam, v.boma, v.data_source, v.verified
+                FROM village_alternate_names van
+                JOIN villages v ON van.village_id = v.village_id
+                WHERE {alt_where_sql}
+            """, alt_params).fetchall()
+            
+            alt_start_idx = len(search_strings)
+            for idx, (v_id, alt_name, norm_alt_name, v_id2, name, norm_name, lon, lat, state, county, payam, boma, source, verified) in enumerate(alternates):
+                search_idx = alt_start_idx + idx
+                search_strings.append(norm_alt_name)
+                village_map[search_idx] = {
+                    "village_id": v_id,
+                    "name": name,
+                    "normalized_name": norm_name,
+                    "lon": lon,
+                    "lat": lat,
+                    "state": state,
+                    "county": county,
+                    "payam": payam,
+                    "boma": boma,
+                    "data_source": source,
+                    "verified": verified,
+                    "matched_alternate_name": alt_name
+                }
+        
+        # FIRST: Try exact match (case-insensitive, normalized)
+        # This is critical - if the village name exactly matches, use it immediately
+        exact_match_idx = None
+        for idx, search_str in enumerate(search_strings):
+            # search_str is already normalized_name from DB, but normalize again to be safe
+            norm_search = normalize_text(search_str)
+            if norm_search == normalized_query:
+                exact_match_idx = idx
+                break
+        
+        if exact_match_idx is not None and exact_match_idx in village_map:
+            # Found exact match - return it immediately with high score
+            village_data = village_map[exact_match_idx].copy()
+            village_data["score"] = 1.0  # Perfect match
+            return [village_data]
+        
+        # SECOND: Try substring exact match (e.g., "abiemnom" in "abiemnom town")
+        # Prioritize matches where query is contained in name (query is the core name)
+        substring_match_idx = None
+        best_substring_score = 0.0
+        
+        for idx, search_str in enumerate(search_strings):
+            norm_search = normalize_text(search_str)
+            
+            # Case 1: Query is contained in name (e.g., "abiemnom" in "abiemnom town")
+            # This is the GOOD case - query is the core name, name has suffix
+            if normalized_query in norm_search:
+                # Calculate how much of the name is the query
+                query_ratio = len(normalized_query) / len(norm_search)
+                # If query is at least 70% of the name, it's a good match
+                # Also check if query starts the name (most common case)
+                if norm_search.startswith(normalized_query) and query_ratio >= 0.5:
+                    score = query_ratio  # Higher score for longer query relative to name
+                    if score > best_substring_score:
+                        best_substring_score = score
+                        substring_match_idx = idx
+            
+            # Case 2: Name is contained in query (e.g., "abiemnom town" in "abiemnom town center")
+            # This is also acceptable if the name is a significant portion
+            elif norm_search in normalized_query:
+                name_ratio = len(norm_search) / len(normalized_query)
+                if name_ratio >= 0.7:  # Name is at least 70% of query
+                    score = name_ratio
+                    if score > best_substring_score:
+                        best_substring_score = score
+                        substring_match_idx = idx
+        
+        # Only use substring match if it's a good quality match
+        if substring_match_idx is not None and best_substring_score >= 0.5 and substring_match_idx in village_map:
+            # Found good substring match - return it with high score
+            village_data = village_map[substring_match_idx].copy()
+            # Score based on how much of the name matches (0.85 to 0.95 range)
+            village_data["score"] = 0.85 + (best_substring_score * 0.1)  # Scale to 0.85-0.95
+            return [village_data]
+        
+        # THIRD: Use progressive fuzzy matching for better accuracy
+        matches = progressive_fuzzy_match(normalized_query, search_strings, threshold, limit * 2)
+        
+        # Prepare match data for context boosting
+        match_data = []
+        for match_idx in range(len(search_strings)):
+            if match_idx in village_map:
+                match_data.append(village_map[match_idx])
+            else:
+                match_data.append({})
+        
+        # Apply context-aware scoring boost
+        constraints = {
+            "state": state_constraint,
+            "county": county_constraint,
+            "payam": payam_constraint,
+            "boma": boma_constraint,
+        }
+        boosted_matches = apply_context_boost(matches, match_data, constraints)
+        
+        # Map back to villages and deduplicate
+        results = []
+        seen_village_ids = set()
+        
+        for match in boosted_matches:
+            match_idx = match[2]
+            score = match[1]
+            
+            if match_idx in village_map:
+                village_data = village_map[match_idx].copy()
+                village_data["score"] = score
+                
+                # Deduplicate by village_id, keeping highest score
+                v_id = village_data["village_id"]
+                if v_id not in seen_village_ids:
+                    seen_village_ids.add(v_id)
+                    results.append(village_data)
+                else:
+                    # Update if this match has higher score
+                    for i, r in enumerate(results):
+                        if r["village_id"] == v_id and score > r["score"]:
+                            results[i] = village_data
+                            break
+        
+        # Sort by score and limit
+        results = sorted(results, key=lambda x: x["score"], reverse=True)[:limit]
+        return results
+    
+    def get_village_by_coordinates(
+        self,
+        lon: float,
+        lat: float,
+        tolerance: float = 0.001  # ~100 meters
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find village near given coordinates.
+        
+        Args:
+            lon: Longitude
+            lat: Latitude
+            tolerance: Distance tolerance in degrees
+            
+        Returns:
+            Village dictionary or None
+        """
+        result = self.conn.execute("""
+            SELECT village_id, name, normalized_name, lon, lat,
+                   state, county, payam, boma, state_id, county_id, payam_id, boma_id,
+                   data_source, source_id, confidence_score, verified, properties
+            FROM villages
+            WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ?
+            ORDER BY ABS(lon - ?) + ABS(lat - ?)
+            LIMIT 1
+        """, [lon - tolerance, lon + tolerance, lat - tolerance, lat + tolerance, lon, lat]).fetchone()
+        
+        if result:
+            return {
+                "village_id": result[0],
+                "name": result[1],
+                "normalized_name": result[2],
+                "lon": result[3],
+                "lat": result[4],
+                "state": result[5],
+                "county": result[6],
+                "payam": result[7],
+                "boma": result[8],
+                "state_id": result[9],
+                "county_id": result[10],
+                "payam_id": result[11],
+                "boma_id": result[12],
+                "data_source": result[13],
+                "source_id": result[14],
+                "confidence_score": result[15],
+                "verified": result[16],
+                "properties": json.loads(result[17]) if result[17] else {}
+            }
+        return None
+    
+    def update_village_admin_boundaries(
+        self,
+        village_id: str,
+        state: Optional[str] = None,
+        county: Optional[str] = None,
+        payam: Optional[str] = None,
+        boma: Optional[str] = None,
+        state_id: Optional[str] = None,
+        county_id: Optional[str] = None,
+        payam_id: Optional[str] = None,
+        boma_id: Optional[str] = None
+    ) -> bool:
+        """
+        Update admin boundaries for a village.
+        
+        Args:
+            village_id: Village ID
+            state: State name
+            county: County name
+            payam: Payam name
+            boma: Boma name
+            state_id: State ID
+            county_id: County ID
+            payam_id: Payam ID
+            boma_id: Boma ID
+            
+        Returns:
+            True if updated, False if village not found
+        """
+        result = self.conn.execute("""
+            UPDATE villages
+            SET state = COALESCE(?, state),
+                county = COALESCE(?, county),
+                payam = COALESCE(?, payam),
+                boma = COALESCE(?, boma),
+                state_id = COALESCE(?, state_id),
+                county_id = COALESCE(?, county_id),
+                payam_id = COALESCE(?, payam_id),
+                boma_id = COALESCE(?, boma_id),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE village_id = ?
+        """, [state, county, payam, boma, state_id, county_id, payam_id, boma_id, village_id])
+        
+        return result.rowcount > 0
+    
+    def get_village(self, village_id: str) -> Optional[Dict[str, Any]]:
+        """Get village by ID."""
+        result = self.conn.execute("""
+            SELECT village_id, name, normalized_name, lon, lat,
+                   state, county, payam, boma, state_id, county_id, payam_id, boma_id,
+                   data_source, source_id, confidence_score, verified, properties,
+                   created_at, updated_at, created_by
+            FROM villages
+            WHERE village_id = ?
+        """, [village_id]).fetchone()
+        
+        if result:
+            return {
+                "village_id": result[0],
+                "name": result[1],
+                "normalized_name": result[2],
+                "lon": result[3],
+                "lat": result[4],
+                "state": result[5],
+                "county": result[6],
+                "payam": result[7],
+                "boma": result[8],
+                "state_id": result[9],
+                "county_id": result[10],
+                "payam_id": result[11],
+                "boma_id": result[12],
+                "data_source": result[13],
+                "source_id": result[14],
+                "confidence_score": result[15],
+                "verified": result[16],
+                "properties": json.loads(result[17]) if result[17] else {},
+                "created_at": result[18],
+                "updated_at": result[19],
+                "created_by": result[20]
+            }
+        return None
+    
+    def get_village_alternate_names(self, village_id: str) -> List[Dict[str, Any]]:
+        """Get all alternate names for a village."""
+        results = self.conn.execute("""
+            SELECT id, alternate_name, normalized_alternate_name, name_type, source, created_at
+            FROM village_alternate_names
+            WHERE village_id = ?
+            ORDER BY created_at DESC
+        """, [village_id]).fetchall()
+        
+        return [
+            {
+                "id": r[0],
+                "alternate_name": r[1],
+                "normalized_alternate_name": r[2],
+                "name_type": r[3],
+                "source": r[4],
+                "created_at": r[5]
+            }
+            for r in results
+        ]
+    
+    def delete_village(self, village_id: str) -> bool:
+        """Delete a village and its alternate names."""
+        # Delete alternate names first (CASCADE if supported)
+        self.conn.execute("DELETE FROM village_alternate_names WHERE village_id = ?", [village_id])
+        
+        # Delete village
+        result = self.conn.execute("DELETE FROM villages WHERE village_id = ?", [village_id])
+        
+        return result.rowcount > 0
     
     def close(self):
         """Close database connection."""

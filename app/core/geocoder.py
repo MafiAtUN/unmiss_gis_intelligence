@@ -4,8 +4,8 @@ from shapely.geometry import Point
 import geopandas as gpd
 from app.core.models import GeocodeResult
 from app.core.duckdb_store import DuckDBStore
-from app.core.normalization import normalize_text, extract_candidates
-from app.core.fuzzy import fuzzy_match
+from app.core.normalization import normalize_text, extract_candidates, parse_hierarchical_constraints
+from app.core.fuzzy import fuzzy_match, progressive_fuzzy_match, apply_context_boost
 from app.core.spatial import get_admin_hierarchy
 from app.core.centroids import compute_centroid
 from app.core.azure_ai import AzureAIParser
@@ -84,8 +84,11 @@ class Geocoder:
         """
         normalized = normalize_text(text)
         
-        # Check cache
-        if use_cache:
+        # Check cache - BUT skip cache if constraints are specified (to avoid stale wrong results)
+        constraints = parse_hierarchical_constraints(text)
+        has_constraints = any(constraints.values())
+        
+        if use_cache and not has_constraints:
             cached = self.db_store.get_cache(normalized)
             if cached:
                 return GeocodeResult(
@@ -96,6 +99,11 @@ class Geocoder:
         
         # Load admin layers if needed
         self._load_admin_layers()
+        
+        # Parse hierarchical constraints from input (state, county, payam, boma, village)
+        # (Already parsed above if skipping cache, but parse again for consistency)
+        if not has_constraints:
+            constraints = parse_hierarchical_constraints(text)
         
         # Extract candidates (deterministic + optional AI)
         candidates = extract_candidates(text)
@@ -108,9 +116,20 @@ class Geocoder:
                 if isinstance(level_candidates, list):
                     for candidate in level_candidates:
                         candidates.add(normalize_text(candidate))
+            # Also use AI-extracted hierarchical info if available
+            if ai_candidates.get("state_candidates"):
+                constraints["state"] = constraints["state"] or normalize_text(ai_candidates["state_candidates"][0])
+            if ai_candidates.get("county_candidates"):
+                constraints["county"] = constraints["county"] or normalize_text(ai_candidates["county_candidates"][0])
+            if ai_candidates.get("payam_candidates"):
+                constraints["payam"] = constraints["payam"] or normalize_text(ai_candidates["payam_candidates"][0])
+            if ai_candidates.get("boma_candidates"):
+                constraints["boma"] = constraints["boma"] or normalize_text(ai_candidates["boma_candidates"][0])
+            if ai_candidates.get("village_candidates"):
+                constraints["village"] = constraints["village"] or normalize_text(ai_candidates["village_candidates"][0])
         
-        # Try resolution in order: village -> boma -> payam
-        result = self._resolve_hierarchical(candidates, text, normalized)
+        # Try resolution in order: village -> boma -> payam (with constraints)
+        result = self._resolve_hierarchical(candidates, text, normalized, constraints)
         
         # Cache result
         if use_cache:
@@ -122,7 +141,8 @@ class Geocoder:
         self,
         candidates: set,
         original_text: str,
-        normalized_text: str
+        normalized_text: str,
+        constraints: Dict[str, Optional[str]] = None
     ) -> GeocodeResult:
         """
         Resolve location using hierarchical matching.
@@ -131,34 +151,38 @@ class Geocoder:
             candidates: Set of candidate place name strings
             original_text: Original input text
             normalized_text: Normalized input text
+            constraints: Dictionary with state, county, payam, boma, village constraints
             
         Returns:
             GeocodeResult
         """
-        # 1. Try village/settlement point match
-        village_result = self._try_settlement_match(candidates)
+        if constraints is None:
+            constraints = {}
+        
+        # 1. Try village/settlement point match (with constraints)
+        village_result = self._try_settlement_match(candidates, constraints)
         if village_result:
             village_result.input_text = original_text
             village_result.normalized_text = normalized_text
             return village_result
         
-        # 2. Try Boma polygon match
-        boma_result = self._try_polygon_match("admin4_boma", candidates)
+        # 2. Try Boma polygon match (with constraints)
+        boma_result = self._try_polygon_match("admin4_boma", candidates, constraints=constraints)
         if boma_result:
             boma_result.input_text = original_text
             boma_result.normalized_text = normalized_text
             return boma_result
         
-        # 3. Try Payam polygon match
-        payam_result = self._try_polygon_match("admin3_payam", candidates)
+        # 3. Try Payam polygon match (with constraints)
+        payam_result = self._try_polygon_match("admin3_payam", candidates, constraints=constraints)
         if payam_result:
             payam_result.input_text = original_text
             payam_result.normalized_text = normalized_text
             return payam_result
         
-        # 4. Check for County or State only (do not return coordinates)
-        county_result = self._try_polygon_match("admin2_county", candidates, return_coords=False)
-        state_result = self._try_polygon_match("admin1_state", candidates, return_coords=False)
+        # 4. Check for County or State only (do not return coordinates, with constraints)
+        county_result = self._try_polygon_match("admin2_county", candidates, return_coords=False, constraints=constraints)
+        state_result = self._try_polygon_match("admin1_state", candidates, return_coords=False, constraints=constraints)
         
         if county_result or state_result:
             # Return best match suggestions without coordinates
@@ -177,8 +201,105 @@ class Geocoder:
             score=0.0
         )
     
-    def _try_settlement_match(self, candidates: set) -> Optional[GeocodeResult]:
-        """Try to match against settlement points."""
+    def _try_settlement_match(self, candidates: set, constraints: Dict[str, Optional[str]] = None) -> Optional[GeocodeResult]:
+        """Try to match against village points (from villages table)."""
+        # First try villages table (new approach)
+        best_match = None
+        best_score = 0.0
+        
+        # Prioritize village name from constraints if available
+        prioritized_candidates = []
+        if constraints.get("village"):
+            prioritized_candidates.append(constraints["village"])
+            # Also try with "town" suffix if not already there
+            village_name = constraints["village"]
+            if "town" not in village_name.lower():
+                prioritized_candidates.append(f"{village_name} town")
+        # Add other candidates
+        for candidate in candidates:
+            if candidate not in prioritized_candidates:
+                prioritized_candidates.append(candidate)
+        
+        for candidate in prioritized_candidates:
+            # Search villages table (includes alternate names, with STRICT constraints)
+            village_matches = self.db_store.search_villages(
+                candidate,
+                threshold=0.5,  # Lower threshold to get more candidates, then filter
+                limit=20,  # Get more candidates for better selection
+                include_alternates=True,
+                state_constraint=constraints.get("state") if constraints else None,
+                county_constraint=constraints.get("county") if constraints else None,
+                payam_constraint=constraints.get("payam") if constraints else None,
+                boma_constraint=constraints.get("boma") if constraints else None
+            )
+            
+            # Filter out matches that violate constraints (double-check)
+            for match in village_matches:
+                # Skip if score is too low
+                if match["score"] < FUZZY_THRESHOLD:
+                    continue
+                
+                # Verify constraints are satisfied
+                passes_constraints = True
+                
+                if constraints:
+                    if constraints.get("state"):
+                        match_state = (match.get("state") or "").lower().replace(" state", "").strip()
+                        constraint_state = constraints["state"].lower().replace(" state", "").strip()
+                        if match_state and constraint_state not in match_state and match_state not in constraint_state and constraint_state != match_state:
+                            passes_constraints = False
+                    
+                    if passes_constraints and constraints.get("county"):
+                        match_county = (match.get("county") or "").lower().replace(" county", "").strip()
+                        constraint_county = constraints["county"].lower().replace(" county", "").strip()
+                        if match_county and constraint_county not in match_county and match_county not in constraint_county and constraint_county != match_county:
+                            passes_constraints = False
+                
+                if passes_constraints and match["score"] > best_score:
+                    best_score = match["score"]
+                    best_match = match
+        
+        # If found in villages table, validate constraints before returning
+        if best_match:
+            # Get full village details
+            village = self.db_store.get_village(best_match["village_id"])
+            if village:
+                # FINAL VALIDATION: Reject if constraints are violated
+                if constraints:
+                    # Check state constraint
+                    if constraints.get("state"):
+                        constraint_state = constraints["state"].lower().replace(" state", "").strip()
+                        village_state = (village.get("state") or "").lower().replace(" state", "").strip()
+                        if village_state and constraint_state not in village_state and village_state not in constraint_state and constraint_state != village_state:
+                            # Wrong state - reject this match
+                            return None
+                    
+                    # Check county constraint
+                    if constraints.get("county"):
+                        constraint_county = constraints["county"].lower().replace(" county", "").strip()
+                        village_county = (village.get("county") or "").lower().replace(" county", "").strip()
+                        if village_county and constraint_county not in village_county and village_county not in constraint_county and constraint_county != village_county:
+                            # Wrong county - reject this match
+                            return None
+                
+                return GeocodeResult(
+                    input_text="",  # Set by caller
+                    normalized_text="",  # Set by caller
+                    resolved_layer="villages",
+                    feature_id=village["village_id"],
+                    matched_name=best_match["name"],
+                    score=best_score,
+                    lon=village["lon"],
+                    lat=village["lat"],
+                    state=village.get("state"),
+                    county=village.get("county"),
+                    payam=village.get("payam"),
+                    boma=village.get("boma"),
+                    village=village["name"],
+                    alternatives=[]
+                )
+        
+        # Fallback to old settlements table if villages table not populated
         if "settlements" not in self.admin_layers:
             return None
         
@@ -186,7 +307,7 @@ class Geocoder:
         if settlements_gdf.empty:
             return None
         
-        # Search name index for settlements
+        # Search name index for settlements (legacy)
         best_match = None
         best_score = 0.0
         
@@ -195,7 +316,9 @@ class Geocoder:
                 candidate,
                 layer="settlements",
                 threshold=FUZZY_THRESHOLD,
-                limit=5
+                limit=5,
+                state_constraint=constraints.get("state") if constraints else None,
+                county_constraint=constraints.get("county") if constraints else None
             )
             
             for match in matches:
@@ -244,7 +367,8 @@ class Geocoder:
         self,
         layer_name: str,
         candidates: set,
-        return_coords: bool = True
+        return_coords: bool = True,
+        constraints: Dict[str, Optional[str]] = None
     ) -> Optional[GeocodeResult]:
         """Try to match against polygon layer."""
         if layer_name not in self.admin_layers:
@@ -263,7 +387,11 @@ class Geocoder:
                 candidate,
                 layer=layer_name,
                 threshold=FUZZY_THRESHOLD,
-                limit=5
+                limit=5,
+                state_constraint=constraints.get("state") if constraints else None,
+                county_constraint=constraints.get("county") if constraints else None,
+                payam_constraint=constraints.get("payam") if constraints else None,
+                boma_constraint=constraints.get("boma") if constraints else None
             )
             
             for match in matches:
@@ -300,6 +428,34 @@ class Geocoder:
             hierarchy = get_admin_hierarchy(point, self.admin_layers)
         else:
             hierarchy = {}
+        
+        # FINAL VALIDATION: Check constraints against spatial hierarchy
+        if constraints:
+            # Check state constraint
+            if constraints.get("state"):
+                constraint_state = constraints["state"].lower().replace(" state", "").strip()
+                hierarchy_state = (hierarchy.get("state") or "").lower().replace(" state", "").strip()
+                # Also check if this is the state layer itself
+                if layer_name == "admin1_state":
+                    feature_state = (best_match["canonical_name"] or "").lower().replace(" state", "").strip()
+                    if feature_state and constraint_state not in feature_state and feature_state not in constraint_state and constraint_state != feature_state:
+                        return None
+                elif hierarchy_state and constraint_state not in hierarchy_state and hierarchy_state not in constraint_state and constraint_state != hierarchy_state:
+                    # Wrong state - reject this match
+                    return None
+            
+            # Check county constraint
+            if constraints.get("county"):
+                constraint_county = constraints["county"].lower().replace(" county", "").strip()
+                hierarchy_county = (hierarchy.get("county") or "").lower().replace(" county", "").strip()
+                # Also check if this is the county layer itself
+                if layer_name == "admin2_county":
+                    feature_county = (best_match["canonical_name"] or "").lower().replace(" county", "").strip()
+                    if feature_county and constraint_county not in feature_county and feature_county not in constraint_county and constraint_county != feature_county:
+                        return None
+                elif hierarchy_county and constraint_county not in hierarchy_county and hierarchy_county not in constraint_county and constraint_county != hierarchy_county:
+                    # Wrong county - reject this match
+                    return None
         
         # Map layer to hierarchy field
         layer_map = {
