@@ -6,7 +6,7 @@ This document describes all available Azure AI Foundry deployments, their capabi
 ## Resource Summary
 
 ### 🎯 PRIMARY: UNMISS AI Foundry (East US 2) - **RECOMMENDED**
-- **Endpoint**: `https://unmiss.cognitiveservices.azure.com/`
+- **Endpoint**: `https://<your-endpoint>.cognitiveservices.azure.com/`
 - **Location**: East US 2
 - **Project**: unmiss / proj-default
 - **Resource Group**: unmiss-hrd
@@ -14,12 +14,12 @@ This document describes all available Azure AI Foundry deployments, their capabi
 - **Total Deployments**: 9 active models
 
 ### Resource 2: openai-osaa (West Europe) - Fallback
-- **Endpoint**: `https://openai-osaa.openai.azure.com/`
+- **Endpoint**: `https://<your-endpoint>.openai.azure.com/`
 - **Location**: West Europe
 - **Best For**: Cost-effective operations, European data residency
 
 ### Resource 3: unga-analysis (East US 2) - Fallback
-- **Endpoint**: `https://unga-analysis.openai.azure.com/`
+- **Endpoint**: `https://<your-endpoint>.openai.azure.com/`
 - **Location**: East US 2
 - **Best For**: High-capability models, US-based operations
 
