@@ -79,58 +79,74 @@ with tab1:
         # Cascading dropdowns for admin boundaries (only in Manual Entry mode)
         if entry_mode == "Manual Entry":
             # Load all states
-            states_result = db_store.conn.execute("""
-                SELECT DISTINCT name 
-                FROM admin1_state 
-                WHERE name IS NOT NULL 
-                ORDER BY name
-            """).fetchall()
-            state_names = [row[0] for row in states_result] if states_result else []
+            try:
+                states_result = db_store.conn.execute("""
+                    SELECT DISTINCT name 
+                    FROM admin1_state 
+                    WHERE name IS NOT NULL 
+                    ORDER BY name
+                """).fetchall()
+                state_names = [row[0] for row in states_result] if states_result else []
+            except Exception as e:
+                st.error(f"Error loading states: {e}")
+                state_names = []
+            
+            if not state_names:
+                st.warning("⚠️ No states found in database. Please upload state data in the Data Manager page first.")
             
             # State dropdown
             selected_state_idx = st.selectbox(
                 "State",
-                options=[""] + state_names,
+                options=[""] + state_names if state_names else [""],
                 index=0,
-                key="manual_state_select"
+                key="manual_state_select",
+                disabled=not state_names
             )
             selected_state = selected_state_idx if selected_state_idx else None
             
             # County dropdown - filtered by selected state
             county_names = []
-            has_parent_info = False
             if selected_state:
                 try:
-                    # Try to find counties by checking properties for admin1Name
-                    counties_result = db_store.conn.execute("""
+                    # First, try to get all counties to check if we have data
+                    all_counties_result = db_store.conn.execute("""
                         SELECT DISTINCT name, properties
                         FROM admin2_county
                         WHERE name IS NOT NULL
                         ORDER BY name
                     """).fetchall()
                     
-                    if counties_result:
-                        for county_name, properties_str in counties_result:
-                            # Check if this county belongs to the selected state
+                    if all_counties_result:
+                        # Try to filter by parent state from properties
+                        has_parent_info = False
+                        for county_name, properties_str in all_counties_result:
                             if properties_str:
                                 try:
                                     import json
                                     props = json.loads(properties_str)
                                     # Check various possible parent field names
-                                    parent_state = props.get("admin1Name") or props.get("admin1") or props.get("state") or props.get("STATE")
+                                    parent_state = (props.get("admin1Name") or 
+                                                   props.get("admin1") or 
+                                                   props.get("state") or 
+                                                   props.get("STATE") or
+                                                   props.get("State"))
                                     if parent_state:
                                         has_parent_info = True
-                                        if parent_state.lower() == selected_state.lower():
+                                        # Normalize comparison (case-insensitive, strip whitespace)
+                                        if parent_state.strip().lower() == selected_state.strip().lower():
                                             county_names.append(county_name)
-                                except (json.JSONDecodeError, TypeError, AttributeError) as e:
-                                    # Skip invalid JSON, continue to next county
+                                except (json.JSONDecodeError, TypeError, AttributeError):
                                     continue
                         
-                        # If no parent info found in properties, show all counties as fallback
-                        if not has_parent_info:
-                            county_names = [row[0] for row in counties_result]
+                        # If no parent info found in properties OR no matches found, show all counties as fallback
+                        if not has_parent_info or not county_names:
+                            county_names = [row[0] for row in all_counties_result]
+                    else:
+                        # No counties in database
+                        st.warning("⚠️ No counties found in database. Please upload county data first.")
                 except Exception as e:
-                    # If query fails, try to get all counties as fallback
+                    st.error(f"Error loading counties: {e}")
+                    # Try simple fallback
                     try:
                         fallback_result = db_store.conn.execute("""
                             SELECT DISTINCT name
@@ -142,47 +158,61 @@ with tab1:
                     except:
                         county_names = []
             
-            selected_county_idx = st.selectbox(
-                "County",
-                options=[""] + county_names,
-                index=0,
-                key="manual_county_select",
-                disabled=not selected_state
-            )
+            # Show county dropdown
+            if selected_state:
+                if not county_names:
+                    st.info("No counties available. Please ensure county data is loaded.")
+                selected_county_idx = st.selectbox(
+                    "County",
+                    options=[""] + county_names if county_names else [""],
+                    index=0,
+                    key="manual_county_select"
+                )
+            else:
+                selected_county_idx = st.selectbox(
+                    "County",
+                    options=[""],
+                    index=0,
+                    key="manual_county_select",
+                    disabled=True
+                )
             selected_county = selected_county_idx if selected_county_idx else None
             
             # Payam dropdown - filtered by selected county
             payam_names = []
-            has_parent_info = False
             if selected_county:
                 try:
-                    payams_result = db_store.conn.execute("""
+                    all_payams_result = db_store.conn.execute("""
                         SELECT DISTINCT name, properties
                         FROM admin3_payam
                         WHERE name IS NOT NULL
                         ORDER BY name
                     """).fetchall()
                     
-                    if payams_result:
-                        for payam_name, properties_str in payams_result:
+                    if all_payams_result:
+                        has_parent_info = False
+                        for payam_name, properties_str in all_payams_result:
                             if properties_str:
                                 try:
                                     import json
                                     props = json.loads(properties_str)
-                                    parent_county = props.get("admin2Name") or props.get("admin2") or props.get("county") or props.get("COUNTY")
+                                    parent_county = (props.get("admin2Name") or 
+                                                    props.get("admin2") or 
+                                                    props.get("county") or 
+                                                    props.get("COUNTY") or
+                                                    props.get("County"))
                                     if parent_county:
                                         has_parent_info = True
-                                        if parent_county.lower() == selected_county.lower():
+                                        if parent_county.strip().lower() == selected_county.strip().lower():
                                             payam_names.append(payam_name)
-                                except (json.JSONDecodeError, TypeError, AttributeError) as e:
-                                    # Skip invalid JSON, continue to next payam
+                                except (json.JSONDecodeError, TypeError, AttributeError):
                                     continue
                         
-                        # If no parent info found, show all payams as fallback
-                        if not has_parent_info:
-                            payam_names = [row[0] for row in payams_result]
+                        # If no parent info found OR no matches, show all payams as fallback
+                        if not has_parent_info or not payam_names:
+                            payam_names = [row[0] for row in all_payams_result]
                 except Exception as e:
-                    # If query fails, try to get all payams as fallback
+                    st.error(f"Error loading payams: {e}")
                     try:
                         fallback_result = db_store.conn.execute("""
                             SELECT DISTINCT name
@@ -194,47 +224,60 @@ with tab1:
                     except:
                         payam_names = []
             
-            selected_payam_idx = st.selectbox(
-                "Payam",
-                options=[""] + payam_names,
-                index=0,
-                key="manual_payam_select",
-                disabled=not selected_county
-            )
+            if selected_county:
+                if not payam_names:
+                    st.info("No payams available for this county.")
+                selected_payam_idx = st.selectbox(
+                    "Payam",
+                    options=[""] + payam_names if payam_names else [""],
+                    index=0,
+                    key="manual_payam_select"
+                )
+            else:
+                selected_payam_idx = st.selectbox(
+                    "Payam",
+                    options=[""],
+                    index=0,
+                    key="manual_payam_select",
+                    disabled=True
+                )
             selected_payam = selected_payam_idx if selected_payam_idx else None
             
             # Boma dropdown - filtered by selected payam
             boma_names = []
-            has_parent_info = False
             if selected_payam:
                 try:
-                    bomas_result = db_store.conn.execute("""
+                    all_bomas_result = db_store.conn.execute("""
                         SELECT DISTINCT name, properties
                         FROM admin4_boma
                         WHERE name IS NOT NULL
                         ORDER BY name
                     """).fetchall()
                     
-                    if bomas_result:
-                        for boma_name, properties_str in bomas_result:
+                    if all_bomas_result:
+                        has_parent_info = False
+                        for boma_name, properties_str in all_bomas_result:
                             if properties_str:
                                 try:
                                     import json
                                     props = json.loads(properties_str)
-                                    parent_payam = props.get("admin3Name") or props.get("admin3") or props.get("payam") or props.get("PAYAM")
+                                    parent_payam = (props.get("admin3Name") or 
+                                                   props.get("admin3") or 
+                                                   props.get("payam") or 
+                                                   props.get("PAYAM") or
+                                                   props.get("Payam"))
                                     if parent_payam:
                                         has_parent_info = True
-                                        if parent_payam.lower() == selected_payam.lower():
+                                        if parent_payam.strip().lower() == selected_payam.strip().lower():
                                             boma_names.append(boma_name)
-                                except (json.JSONDecodeError, TypeError, AttributeError) as e:
-                                    # Skip invalid JSON, continue to next boma
+                                except (json.JSONDecodeError, TypeError, AttributeError):
                                     continue
                         
-                        # If no parent info found, show all bomas as fallback
-                        if not has_parent_info:
-                            boma_names = [row[0] for row in bomas_result]
+                        # If no parent info found OR no matches, show all bomas as fallback
+                        if not has_parent_info or not boma_names:
+                            boma_names = [row[0] for row in all_bomas_result]
                 except Exception as e:
-                    # If query fails, try to get all bomas as fallback
+                    st.error(f"Error loading bomas: {e}")
                     try:
                         fallback_result = db_store.conn.execute("""
                             SELECT DISTINCT name
@@ -246,13 +289,23 @@ with tab1:
                     except:
                         boma_names = []
             
-            selected_boma_idx = st.selectbox(
-                "Boma",
-                options=[""] + boma_names,
-                index=0,
-                key="manual_boma_select",
-                disabled=not selected_payam
-            )
+            if selected_payam:
+                if not boma_names:
+                    st.info("No bomas available for this payam.")
+                selected_boma_idx = st.selectbox(
+                    "Boma",
+                    options=[""] + boma_names if boma_names else [""],
+                    index=0,
+                    key="manual_boma_select"
+                )
+            else:
+                selected_boma_idx = st.selectbox(
+                    "Boma",
+                    options=[""],
+                    index=0,
+                    key="manual_boma_select",
+                    disabled=True
+                )
             selected_boma = selected_boma_idx if selected_boma_idx else None
             
             # Store selected values for use in save
