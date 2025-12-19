@@ -7,6 +7,13 @@ from shapely.geometry import Point
 from app.core.duckdb_store import DuckDBStore
 from app.core.spatial import detect_admin_boundaries_from_point
 from app.core.config import DUCKDB_PATH, PROJECT_ROOT
+from app.core.admin_hierarchy import (
+    load_hierarchy_from_csv,
+    get_all_states,
+    get_all_counties,
+    get_all_payams,
+    get_all_bomas
+)
 from app.core.scrapers import OSMScraper
 import sys
 # Import scraping function
@@ -78,7 +85,12 @@ with tab1:
     with col2:
         # Cascading dropdowns for admin boundaries (only in Manual Entry mode)
         if entry_mode == "Manual Entry":
-            # Load all states
+            # Load hierarchy from CSV (primary source) or database (fallback)
+            hierarchy = load_hierarchy_from_csv()
+            csv_states = get_all_states()
+            
+            # Try to get states from database as fallback
+            db_state_names = []
             try:
                 states_result = db_store.conn.execute("""
                     SELECT DISTINCT name 
@@ -86,13 +98,15 @@ with tab1:
                     WHERE name IS NOT NULL 
                     ORDER BY name
                 """).fetchall()
-                state_names = [row[0] for row in states_result] if states_result else []
-            except Exception as e:
-                st.error(f"Error loading states: {e}")
-                state_names = []
+                db_state_names = [row[0] for row in states_result] if states_result else []
+            except Exception:
+                pass
+            
+            # Use CSV states if available, otherwise use database states
+            state_names = csv_states if csv_states else db_state_names
             
             if not state_names:
-                st.warning("⚠️ No states found in database. Please upload state data in the Data Manager page first.")
+                st.warning("⚠️ No states found. Please ensure the compiled dataset CSV is available or upload state data in the Data Manager page.")
             
             # State dropdown
             selected_state_idx = st.selectbox(
@@ -107,61 +121,47 @@ with tab1:
             # County dropdown - filtered by selected state
             county_names = []
             if selected_state:
-                try:
-                    # First, try to get all counties to check if we have data
-                    all_counties_result = db_store.conn.execute("""
-                        SELECT DISTINCT name, properties
-                        FROM admin2_county
-                        WHERE name IS NOT NULL
-                        ORDER BY name
-                    """).fetchall()
-                    
-                    if all_counties_result:
-                        # Try to filter by parent state from properties
-                        has_parent_info = False
-                        for county_name, properties_str in all_counties_result:
-                            if properties_str:
-                                try:
-                                    import json
-                                    props = json.loads(properties_str)
-                                    # Check various possible parent field names
-                                    parent_state = (props.get("admin1Name") or 
-                                                   props.get("admin1") or 
-                                                   props.get("state") or 
-                                                   props.get("STATE") or
-                                                   props.get("State"))
-                                    if parent_state:
-                                        has_parent_info = True
-                                        # Normalize comparison (case-insensitive, strip whitespace)
-                                        if parent_state.strip().lower() == selected_state.strip().lower():
-                                            county_names.append(county_name)
-                                except (json.JSONDecodeError, TypeError, AttributeError):
-                                    continue
-                        
-                        # If no parent info found in properties OR no matches found, show all counties as fallback
-                        if not has_parent_info or not county_names:
-                            county_names = [row[0] for row in all_counties_result]
-                    else:
-                        # No counties in database
-                        st.warning("⚠️ No counties found in database. Please upload county data first.")
-                except Exception as e:
-                    st.error(f"Error loading counties: {e}")
-                    # Try simple fallback
+                # First try to get from CSV hierarchy (most reliable)
+                if hierarchy.get("state_to_counties") and selected_state in hierarchy["state_to_counties"]:
+                    county_names = hierarchy["state_to_counties"][selected_state]
+                else:
+                    # Fallback: try database
                     try:
-                        fallback_result = db_store.conn.execute("""
-                            SELECT DISTINCT name
+                        all_counties_result = db_store.conn.execute("""
+                            SELECT DISTINCT name, properties
                             FROM admin2_county
                             WHERE name IS NOT NULL
                             ORDER BY name
                         """).fetchall()
-                        county_names = [row[0] for row in fallback_result] if fallback_result else []
-                    except:
-                        county_names = []
+                        
+                        if all_counties_result:
+                            # Try to filter by parent state from properties
+                            for county_name, properties_str in all_counties_result:
+                                if properties_str:
+                                    try:
+                                        props = json.loads(properties_str)
+                                        parent_state = (props.get("admin1Name") or 
+                                                       props.get("admin1") or 
+                                                       props.get("state") or 
+                                                       props.get("STATE") or
+                                                       props.get("State"))
+                                        if parent_state and parent_state.strip().lower() == selected_state.strip().lower():
+                                            county_names.append(county_name)
+                                    except (json.JSONDecodeError, TypeError, AttributeError):
+                                        continue
+                            
+                            # If no matches, show all counties
+                            if not county_names:
+                                county_names = [row[0] for row in all_counties_result]
+                    except Exception as e:
+                        st.error(f"Error loading counties: {e}")
+                        # Final fallback: get all counties from CSV
+                        county_names = get_all_counties()
             
             # Show county dropdown
             if selected_state:
                 if not county_names:
-                    st.info("No counties available. Please ensure county data is loaded.")
+                    st.info("No counties available for this state.")
                 selected_county_idx = st.selectbox(
                     "County",
                     options=[""] + county_names if county_names else [""],
@@ -181,48 +181,41 @@ with tab1:
             # Payam dropdown - filtered by selected county
             payam_names = []
             if selected_county:
-                try:
-                    all_payams_result = db_store.conn.execute("""
-                        SELECT DISTINCT name, properties
-                        FROM admin3_payam
-                        WHERE name IS NOT NULL
-                        ORDER BY name
-                    """).fetchall()
-                    
-                    if all_payams_result:
-                        has_parent_info = False
-                        for payam_name, properties_str in all_payams_result:
-                            if properties_str:
-                                try:
-                                    import json
-                                    props = json.loads(properties_str)
-                                    parent_county = (props.get("admin2Name") or 
-                                                    props.get("admin2") or 
-                                                    props.get("county") or 
-                                                    props.get("COUNTY") or
-                                                    props.get("County"))
-                                    if parent_county:
-                                        has_parent_info = True
-                                        if parent_county.strip().lower() == selected_county.strip().lower():
-                                            payam_names.append(payam_name)
-                                except (json.JSONDecodeError, TypeError, AttributeError):
-                                    continue
-                        
-                        # If no parent info found OR no matches, show all payams as fallback
-                        if not has_parent_info or not payam_names:
-                            payam_names = [row[0] for row in all_payams_result]
-                except Exception as e:
-                    st.error(f"Error loading payams: {e}")
+                # First try to get from CSV hierarchy (most reliable)
+                if hierarchy.get("county_to_payams") and selected_county in hierarchy["county_to_payams"]:
+                    payam_names = hierarchy["county_to_payams"][selected_county]
+                else:
+                    # Fallback: try database
                     try:
-                        fallback_result = db_store.conn.execute("""
-                            SELECT DISTINCT name
+                        all_payams_result = db_store.conn.execute("""
+                            SELECT DISTINCT name, properties
                             FROM admin3_payam
                             WHERE name IS NOT NULL
                             ORDER BY name
                         """).fetchall()
-                        payam_names = [row[0] for row in fallback_result] if fallback_result else []
-                    except:
-                        payam_names = []
+                        
+                        if all_payams_result:
+                            for payam_name, properties_str in all_payams_result:
+                                if properties_str:
+                                    try:
+                                        props = json.loads(properties_str)
+                                        parent_county = (props.get("admin2Name") or 
+                                                        props.get("admin2") or 
+                                                        props.get("county") or 
+                                                        props.get("COUNTY") or
+                                                        props.get("County"))
+                                        if parent_county and parent_county.strip().lower() == selected_county.strip().lower():
+                                            payam_names.append(payam_name)
+                                    except (json.JSONDecodeError, TypeError, AttributeError):
+                                        continue
+                            
+                            # If no matches, show all payams
+                            if not payam_names:
+                                payam_names = [row[0] for row in all_payams_result]
+                    except Exception as e:
+                        st.error(f"Error loading payams: {e}")
+                        # Final fallback: get all payams from CSV
+                        payam_names = get_all_payams()
             
             if selected_county:
                 if not payam_names:
@@ -246,48 +239,41 @@ with tab1:
             # Boma dropdown - filtered by selected payam
             boma_names = []
             if selected_payam:
-                try:
-                    all_bomas_result = db_store.conn.execute("""
-                        SELECT DISTINCT name, properties
-                        FROM admin4_boma
-                        WHERE name IS NOT NULL
-                        ORDER BY name
-                    """).fetchall()
-                    
-                    if all_bomas_result:
-                        has_parent_info = False
-                        for boma_name, properties_str in all_bomas_result:
-                            if properties_str:
-                                try:
-                                    import json
-                                    props = json.loads(properties_str)
-                                    parent_payam = (props.get("admin3Name") or 
-                                                   props.get("admin3") or 
-                                                   props.get("payam") or 
-                                                   props.get("PAYAM") or
-                                                   props.get("Payam"))
-                                    if parent_payam:
-                                        has_parent_info = True
-                                        if parent_payam.strip().lower() == selected_payam.strip().lower():
-                                            boma_names.append(boma_name)
-                                except (json.JSONDecodeError, TypeError, AttributeError):
-                                    continue
-                        
-                        # If no parent info found OR no matches, show all bomas as fallback
-                        if not has_parent_info or not boma_names:
-                            boma_names = [row[0] for row in all_bomas_result]
-                except Exception as e:
-                    st.error(f"Error loading bomas: {e}")
+                # First try to get from CSV hierarchy (most reliable)
+                if hierarchy.get("payam_to_bomas") and selected_payam in hierarchy["payam_to_bomas"]:
+                    boma_names = hierarchy["payam_to_bomas"][selected_payam]
+                else:
+                    # Fallback: try database
                     try:
-                        fallback_result = db_store.conn.execute("""
-                            SELECT DISTINCT name
+                        all_bomas_result = db_store.conn.execute("""
+                            SELECT DISTINCT name, properties
                             FROM admin4_boma
                             WHERE name IS NOT NULL
                             ORDER BY name
                         """).fetchall()
-                        boma_names = [row[0] for row in fallback_result] if fallback_result else []
-                    except:
-                        boma_names = []
+                        
+                        if all_bomas_result:
+                            for boma_name, properties_str in all_bomas_result:
+                                if properties_str:
+                                    try:
+                                        props = json.loads(properties_str)
+                                        parent_payam = (props.get("admin3Name") or 
+                                                       props.get("admin3") or 
+                                                       props.get("payam") or 
+                                                       props.get("PAYAM") or
+                                                       props.get("Payam"))
+                                        if parent_payam and parent_payam.strip().lower() == selected_payam.strip().lower():
+                                            boma_names.append(boma_name)
+                                    except (json.JSONDecodeError, TypeError, AttributeError):
+                                        continue
+                            
+                            # If no matches, show all bomas
+                            if not boma_names:
+                                boma_names = [row[0] for row in all_bomas_result]
+                    except Exception as e:
+                        st.error(f"Error loading bomas: {e}")
+                        # Final fallback: get all bomas from CSV
+                        boma_names = get_all_bomas()
             
             if selected_payam:
                 if not boma_names:
@@ -604,24 +590,35 @@ with tab3:
                 
                 with col2:
                     # Cascading dropdowns for admin boundaries in edit form
-                    # Load all states
-                    states_result = db_store.conn.execute("""
-                        SELECT DISTINCT name 
-                        FROM admin1_state 
-                        WHERE name IS NOT NULL 
-                        ORDER BY name
-                    """).fetchall()
-                    state_names = [row[0] for row in states_result] if states_result else []
+                    # Load hierarchy from CSV (primary source) or database (fallback)
+                    edit_hierarchy = load_hierarchy_from_csv()
+                    edit_csv_states = get_all_states()
+                    
+                    # Try to get states from database as fallback
+                    edit_db_state_names = []
+                    try:
+                        states_result = db_store.conn.execute("""
+                            SELECT DISTINCT name 
+                            FROM admin1_state 
+                            WHERE name IS NOT NULL 
+                            ORDER BY name
+                        """).fetchall()
+                        edit_db_state_names = [row[0] for row in states_result] if states_result else []
+                    except Exception:
+                        pass
+                    
+                    # Use CSV states if available, otherwise use database states
+                    edit_state_names = edit_csv_states if edit_csv_states else edit_db_state_names
                     
                     # Find current state index
                     current_state = village.get("state") or ""
                     state_index = 0
-                    if current_state and current_state in state_names:
-                        state_index = state_names.index(current_state) + 1  # +1 for empty option
+                    if current_state and current_state in edit_state_names:
+                        state_index = edit_state_names.index(current_state) + 1  # +1 for empty option
                     
                     selected_edit_state_idx = st.selectbox(
                         "State",
-                        options=[""] + state_names,
+                        options=[""] + edit_state_names if edit_state_names else [""],
                         index=state_index,
                         key="edit_state_select"
                     )
@@ -629,46 +626,41 @@ with tab3:
                     
                     # County dropdown - filtered by selected state
                     county_names = []
-                    has_parent_info = False
                     if selected_edit_state:
-                        try:
-                            counties_result = db_store.conn.execute("""
-                                SELECT DISTINCT name, properties
-                                FROM admin2_county
-                                WHERE name IS NOT NULL
-                                ORDER BY name
-                            """).fetchall()
-                            
-                            if counties_result:
-                                for county_name, properties_str in counties_result:
-                                    if properties_str:
-                                        try:
-                                            import json
-                                            props = json.loads(properties_str)
-                                            parent_state = props.get("admin1Name") or props.get("admin1") or props.get("state") or props.get("STATE")
-                                            if parent_state:
-                                                has_parent_info = True
-                                                if parent_state.lower() == selected_edit_state.lower():
-                                                    county_names.append(county_name)
-                                        except (json.JSONDecodeError, TypeError, AttributeError) as e:
-                                            # Skip invalid JSON, continue to next county
-                                            continue
-                                
-                                # If no parent info found, show all counties as fallback
-                                if not has_parent_info:
-                                    county_names = [row[0] for row in counties_result]
-                        except Exception as e:
-                            # If query fails, try to get all counties as fallback
+                        # First try to get from CSV hierarchy (most reliable)
+                        if edit_hierarchy.get("state_to_counties") and selected_edit_state in edit_hierarchy["state_to_counties"]:
+                            county_names = edit_hierarchy["state_to_counties"][selected_edit_state]
+                        else:
+                            # Fallback: try database
                             try:
-                                fallback_result = db_store.conn.execute("""
-                                    SELECT DISTINCT name
+                                counties_result = db_store.conn.execute("""
+                                    SELECT DISTINCT name, properties
                                     FROM admin2_county
                                     WHERE name IS NOT NULL
                                     ORDER BY name
                                 """).fetchall()
-                                county_names = [row[0] for row in fallback_result] if fallback_result else []
-                            except:
-                                county_names = []
+                                
+                                if counties_result:
+                                    for county_name, properties_str in counties_result:
+                                        if properties_str:
+                                            try:
+                                                props = json.loads(properties_str)
+                                                parent_state = (props.get("admin1Name") or 
+                                                               props.get("admin1") or 
+                                                               props.get("state") or 
+                                                               props.get("STATE") or
+                                                               props.get("State"))
+                                                if parent_state and parent_state.strip().lower() == selected_edit_state.strip().lower():
+                                                    county_names.append(county_name)
+                                            except (json.JSONDecodeError, TypeError, AttributeError):
+                                                continue
+                                    
+                                    # If no matches, show all counties
+                                    if not county_names:
+                                        county_names = [row[0] for row in counties_result]
+                            except Exception as e:
+                                # Final fallback: get all counties from CSV
+                                county_names = get_all_counties()
                     
                     # Find current county index
                     current_county = village.get("county") or ""
@@ -687,46 +679,41 @@ with tab3:
                     
                     # Payam dropdown - filtered by selected county
                     payam_names = []
-                    has_parent_info = False
                     if selected_edit_county:
-                        try:
-                            payams_result = db_store.conn.execute("""
-                                SELECT DISTINCT name, properties
-                                FROM admin3_payam
-                                WHERE name IS NOT NULL
-                                ORDER BY name
-                            """).fetchall()
-                            
-                            if payams_result:
-                                for payam_name, properties_str in payams_result:
-                                    if properties_str:
-                                        try:
-                                            import json
-                                            props = json.loads(properties_str)
-                                            parent_county = props.get("admin2Name") or props.get("admin2") or props.get("county") or props.get("COUNTY")
-                                            if parent_county:
-                                                has_parent_info = True
-                                                if parent_county.lower() == selected_edit_county.lower():
-                                                    payam_names.append(payam_name)
-                                        except (json.JSONDecodeError, TypeError, AttributeError) as e:
-                                            # Skip invalid JSON, continue to next payam
-                                            continue
-                                
-                                # If no parent info found, show all payams as fallback
-                                if not has_parent_info:
-                                    payam_names = [row[0] for row in payams_result]
-                        except Exception as e:
-                            # If query fails, try to get all payams as fallback
+                        # First try to get from CSV hierarchy (most reliable)
+                        if edit_hierarchy.get("county_to_payams") and selected_edit_county in edit_hierarchy["county_to_payams"]:
+                            payam_names = edit_hierarchy["county_to_payams"][selected_edit_county]
+                        else:
+                            # Fallback: try database
                             try:
-                                fallback_result = db_store.conn.execute("""
-                                    SELECT DISTINCT name
+                                payams_result = db_store.conn.execute("""
+                                    SELECT DISTINCT name, properties
                                     FROM admin3_payam
                                     WHERE name IS NOT NULL
                                     ORDER BY name
                                 """).fetchall()
-                                payam_names = [row[0] for row in fallback_result] if fallback_result else []
-                            except:
-                                payam_names = []
+                                
+                                if payams_result:
+                                    for payam_name, properties_str in payams_result:
+                                        if properties_str:
+                                            try:
+                                                props = json.loads(properties_str)
+                                                parent_county = (props.get("admin2Name") or 
+                                                               props.get("admin2") or 
+                                                               props.get("county") or 
+                                                               props.get("COUNTY") or
+                                                               props.get("County"))
+                                                if parent_county and parent_county.strip().lower() == selected_edit_county.strip().lower():
+                                                    payam_names.append(payam_name)
+                                            except (json.JSONDecodeError, TypeError, AttributeError):
+                                                continue
+                                    
+                                    # If no matches, show all payams
+                                    if not payam_names:
+                                        payam_names = [row[0] for row in payams_result]
+                            except Exception as e:
+                                # Final fallback: get all payams from CSV
+                                payam_names = get_all_payams()
                     
                     # Find current payam index
                     current_payam = village.get("payam") or ""
@@ -745,46 +732,41 @@ with tab3:
                     
                     # Boma dropdown - filtered by selected payam
                     boma_names = []
-                    has_parent_info = False
                     if selected_edit_payam:
-                        try:
-                            bomas_result = db_store.conn.execute("""
-                                SELECT DISTINCT name, properties
-                                FROM admin4_boma
-                                WHERE name IS NOT NULL
-                                ORDER BY name
-                            """).fetchall()
-                            
-                            if bomas_result:
-                                for boma_name, properties_str in bomas_result:
-                                    if properties_str:
-                                        try:
-                                            import json
-                                            props = json.loads(properties_str)
-                                            parent_payam = props.get("admin3Name") or props.get("admin3") or props.get("payam") or props.get("PAYAM")
-                                            if parent_payam:
-                                                has_parent_info = True
-                                                if parent_payam.lower() == selected_edit_payam.lower():
-                                                    boma_names.append(boma_name)
-                                        except (json.JSONDecodeError, TypeError, AttributeError) as e:
-                                            # Skip invalid JSON, continue to next boma
-                                            continue
-                                
-                                # If no parent info found, show all bomas as fallback
-                                if not has_parent_info:
-                                    boma_names = [row[0] for row in bomas_result]
-                        except Exception as e:
-                            # If query fails, try to get all bomas as fallback
+                        # First try to get from CSV hierarchy (most reliable)
+                        if edit_hierarchy.get("payam_to_bomas") and selected_edit_payam in edit_hierarchy["payam_to_bomas"]:
+                            boma_names = edit_hierarchy["payam_to_bomas"][selected_edit_payam]
+                        else:
+                            # Fallback: try database
                             try:
-                                fallback_result = db_store.conn.execute("""
-                                    SELECT DISTINCT name
+                                bomas_result = db_store.conn.execute("""
+                                    SELECT DISTINCT name, properties
                                     FROM admin4_boma
                                     WHERE name IS NOT NULL
                                     ORDER BY name
                                 """).fetchall()
-                                boma_names = [row[0] for row in fallback_result] if fallback_result else []
-                            except:
-                                boma_names = []
+                                
+                                if bomas_result:
+                                    for boma_name, properties_str in bomas_result:
+                                        if properties_str:
+                                            try:
+                                                props = json.loads(properties_str)
+                                                parent_payam = (props.get("admin3Name") or 
+                                                               props.get("admin3") or 
+                                                               props.get("payam") or 
+                                                               props.get("PAYAM") or
+                                                               props.get("Payam"))
+                                                if parent_payam and parent_payam.strip().lower() == selected_edit_payam.strip().lower():
+                                                    boma_names.append(boma_name)
+                                            except (json.JSONDecodeError, TypeError, AttributeError):
+                                                continue
+                                    
+                                    # If no matches, show all bomas
+                                    if not boma_names:
+                                        boma_names = [row[0] for row in bomas_result]
+                            except Exception as e:
+                                # Final fallback: get all bomas from CSV
+                                boma_names = get_all_bomas()
                     
                     # Find current boma index
                     current_boma = village.get("boma") or ""
