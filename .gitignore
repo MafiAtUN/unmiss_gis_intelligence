@@ -19,51 +19,57 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
 # Virtual environments
 venv/
 env/
 ENV/
 ungis/
-.venv
-
-# Environment variables
-.env
-.env.local
+.venv/
 
 # IDE
 .vscode/
 .idea/
-.cursor/
 *.swp
 *.swo
 *~
 .DS_Store
 
-# Data files
+# DuckDB
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
 data/duckdb/*.duckdb
 data/duckdb/*.duckdb.wal
-data/ingested/*
-!data/ingested/.gitkeep
 
 # Streamlit
 .streamlit/
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-*.cover
-.hypothesis/
+# Environment variables
+.env
+.env.local
 
 # Logs
 *.log
 logs/
 
+# Test files
+test_*.py
+*_test.py
+debug_*.py
+analyze_*.py
+direct_*.py
+clear_cache.py
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Data files (keep structure, ignore large datasets)
+data/ingested/*
+!data/ingested/.gitkeep
+
 # Jupyter
 .ipynb_checkpoints/
-
-# OS
-.DS_Store
-Thumbs.db
+*.ipynb

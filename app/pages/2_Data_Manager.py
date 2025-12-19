@@ -4,8 +4,12 @@ import geopandas as gpd
 import pandas as pd
 from pathlib import Path
 from app.core.duckdb_store import DuckDBStore
-from app.core.config import LAYER_NAMES, INGESTED_DIR
+from app.core.config import DUCKDB_PATH, LAYER_NAMES, INGESTED_DIR
 
+
+# Initialize session state if not already initialized
+if "db_store" not in st.session_state:
+    st.session_state.db_store = DuckDBStore(DUCKDB_PATH)
 
 st.title("📊 Data Manager")
 

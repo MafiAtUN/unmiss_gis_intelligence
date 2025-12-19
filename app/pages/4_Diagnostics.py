@@ -1,8 +1,13 @@
 """Diagnostics page for monitoring performance and cache statistics."""
 import streamlit as st
 from app.core.duckdb_store import DuckDBStore
+from app.core.config import DUCKDB_PATH
 from datetime import datetime, timedelta
 
+
+# Initialize session state if not already initialized
+if "db_store" not in st.session_state:
+    st.session_state.db_store = DuckDBStore(DUCKDB_PATH)
 
 st.title("🔧 Diagnostics")
 
