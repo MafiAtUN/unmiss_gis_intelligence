@@ -269,7 +269,7 @@ The geocoder tries to find the **most specific** location:
 ## Current Configuration
 
 ### Azure AI Foundry (UNMISS Project)
-- **Endpoint**: `https://unmiss.cognitiveservices.azure.com/`
+- **Endpoint**: `https://<your-endpoint>.cognitiveservices.azure.com/`
 - **Project**: `unmiss / proj-default`
 - **Default Model**: `gpt-4.1-mini` (cost-effective)
 - **Available Models**: 9 deployments (OpenAI, Anthropic, xAI, Meta)
