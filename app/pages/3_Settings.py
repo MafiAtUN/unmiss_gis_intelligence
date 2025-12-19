@@ -42,7 +42,7 @@ st.subheader("Azure AI Foundry Integration")
 enable_ai = st.checkbox(
     "Enable AI extraction",
     value=ENABLE_AI_EXTRACTION,
-    help="Use Azure AI Foundry to extract structured place names from text"
+    help="Use Azure AI Foundry to extract structured place names from text (enabled by default for better accuracy)"
 )
 
 if enable_ai:

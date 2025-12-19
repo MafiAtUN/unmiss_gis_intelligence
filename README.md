@@ -44,7 +44,9 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-5. Edit `.env` with your configuration (Azure keys optional if not using AI extraction)
+5. Edit `.env` with your configuration:
+   - Azure AI Foundry credentials (required for AI extraction, enabled by default for better accuracy)
+   - Set `ENABLE_AI_EXTRACTION=false` to disable if Azure credentials are not available
 
 6. Run the application:
 ```bash

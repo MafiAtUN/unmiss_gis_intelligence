@@ -51,7 +51,7 @@ UNMISS_DEPLOYMENTS = {
 # Geocoding settings
 FUZZY_THRESHOLD: float = float(os.getenv("FUZZY_THRESHOLD", "0.7"))
 CENTROID_CRS: str = os.getenv("CENTROID_CRS", "EPSG:32736")  # UTM Zone 36N for South Sudan
-ENABLE_AI_EXTRACTION: bool = os.getenv("ENABLE_AI_EXTRACTION", "false").lower() == "true"
+ENABLE_AI_EXTRACTION: bool = os.getenv("ENABLE_AI_EXTRACTION", "true").lower() == "true"  # Enabled by default for better accuracy
 
 # Cache settings
 CACHE_TTL: int = int(os.getenv("CACHE_TTL", "86400"))  # 24 hours
