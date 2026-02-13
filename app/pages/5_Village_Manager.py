@@ -1,8 +1,15 @@
 """Village Manager page for managing village GPS coordinates and admin boundaries."""
 import streamlit as st
+import sys
+from pathlib import Path
+
+# Add project root to Python path to ensure imports work
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import pandas as pd
 import json
-from pathlib import Path
 from shapely.geometry import Point
 from app.core.duckdb_store import DuckDBStore
 from app.core.spatial import detect_admin_boundaries_from_point
@@ -15,7 +22,6 @@ from app.core.admin_hierarchy import (
     get_all_bomas
 )
 from app.core.scrapers import OSMScraper
-import sys
 # Import scraping function
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 try:

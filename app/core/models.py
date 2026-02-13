@@ -59,3 +59,65 @@ class NameIndexEntry:
     normalized_alias: Optional[str] = None
     admin_codes: Optional[Dict[str, str]] = None
 
+
+@dataclass
+class ExtractedLocation:
+    """A location mention extracted from a document."""
+    original_text: str
+    context: str
+    extraction_method: str  # "regex" or "ai"
+    start_pos: int
+    end_pos: int
+    geocode_result: Optional[GeocodeResult] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "original_text": self.original_text,
+            "context": self.context,
+            "extraction_method": self.extraction_method,
+            "start_pos": self.start_pos,
+            "end_pos": self.end_pos,
+            "geocode_result": self.geocode_result.to_dict() if self.geocode_result else None,
+        }
+
+
+@dataclass
+class ExtractionResult:
+    """Container for all extracted locations from a document."""
+    regex_locations: List[ExtractedLocation]
+    ai_locations: List[ExtractedLocation]  # Azure AI locations (for backward compatibility)
+    ollama_locations: List[ExtractedLocation] = None  # Ollama locations
+    document_text: str = ""
+    
+    def __post_init__(self):
+        if self.ollama_locations is None:
+            self.ollama_locations = []
+    
+    def get_all_locations(self) -> List[ExtractedLocation]:
+        """Get all locations from all methods."""
+        return self.regex_locations + self.ai_locations + self.ollama_locations
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "regex_locations": [loc.to_dict() for loc in self.regex_locations],
+            "ai_locations": [loc.to_dict() for loc in self.ai_locations],
+            "ollama_locations": [loc.to_dict() for loc in (self.ollama_locations or [])],
+            "document_text": self.document_text,
+        }
+
+
+@dataclass
+class ExtractionFeedback:
+    """User feedback on an extracted location."""
+    document_hash: str
+    original_text: str
+    extracted_text: str
+    method: str  # "regex" or "ai"
+    user_corrected_text: Optional[str] = None
+    is_correct: Optional[bool] = None
+    context_text: Optional[str] = None
+    geocode_result_json: Optional[str] = None
+    feedback_timestamp: Optional[datetime] = None
+

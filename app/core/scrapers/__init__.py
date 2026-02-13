@@ -4,3 +4,4 @@ from app.core.scrapers.osm_scraper import OSMScraper
 
 __all__ = ["BaseScraper", "OSMScraper"]
 
+

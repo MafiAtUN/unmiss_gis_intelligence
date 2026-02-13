@@ -5,6 +5,7 @@ from shapely.geometry import Point
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from app.gazetteers.base import GazetteerProvider
+from app.utils.logging import log_error
 
 
 class GeoNamesProvider(GazetteerProvider):
@@ -52,7 +53,11 @@ class GeoNamesProvider(GazetteerProvider):
             self.gdf = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
             
         except Exception as e:
-            print(f"Error loading GeoNames data: {e}")
+            log_error(e, {
+                "module": "geonames",
+                "function": "_load_data",
+                "data_path": str(self.data_path) if self.data_path else None
+            })
             self.gdf = gpd.GeoDataFrame()
     
     def fetch_features(self, query: str, bbox: tuple = None) -> gpd.GeoDataFrame:

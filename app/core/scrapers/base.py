@@ -73,3 +73,4 @@ class BaseScraper(ABC):
             "properties": result.get("properties", {})
         }
 
+

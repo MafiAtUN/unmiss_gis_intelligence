@@ -60,3 +60,4 @@ class GoogleMapsScraper(BaseScraper):
         # TODO: Implement Google Places details API
         return None
 
+

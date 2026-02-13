@@ -10,6 +10,7 @@ from app.core.spatial import get_admin_hierarchy
 from app.core.centroids import compute_centroid
 from app.core.azure_ai import AzureAIParser
 from app.core.config import FUZZY_THRESHOLD, LAYER_NAMES
+from app.core.security import sanitize_layer_name
 
 
 class Geocoder:
@@ -32,10 +33,15 @@ class Geocoder:
             return
         
         for layer_name in LAYER_NAMES.values():
+            # Validate layer name (defense in depth)
+            sanitized_layer = sanitize_layer_name(layer_name)
+            if not sanitized_layer:
+                continue  # Skip invalid layers
+            
             # Load geometries from DuckDB
             result = self.db_store.conn.execute(f"""
                 SELECT feature_id, geometry_wkb, name, properties
-                FROM {layer_name}
+                FROM {sanitized_layer}
             """).fetchall()
             
             if not result:

@@ -1,0 +1,672 @@
+{
+  "03-09": {
+    "week": "03-09",
+    "compiled_reports": [
+      {
+        "file": "HRD Daily Report_5 November 2025.docx",
+        "total_paragraphs": 36,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Eastern Equatoria",
+          "Unity",
+          "Warrap",
+          "Western Equatoria"
+        ],
+        "incident_count": 5,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_04 November 2025.docx",
+        "total_paragraphs": 20,
+        "has_highlights": true,
+        "states_mentioned": [],
+        "incident_count": 0,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_07 November 2025.docx",
+        "total_paragraphs": 22,
+        "has_highlights": true,
+        "states_mentioned": [],
+        "incident_count": 0,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_6 November 2025.docx",
+        "total_paragraphs": 46,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Central Equatoria",
+          "Eastern Equatoria",
+          "Lakes",
+          "Warrap",
+          "Western Bahr el Ghazal",
+          "Unity"
+        ],
+        "incident_count": 6,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_06 November 2025.docx",
+        "total_paragraphs": 18,
+        "has_highlights": true,
+        "states_mentioned": [],
+        "incident_count": 0,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_7 November 2025.docx",
+        "total_paragraphs": 46,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Central Equatoria",
+          "Eastern Equatoria",
+          "Lakes",
+          "Unity",
+          "Warrap",
+          "Western Equatoria"
+        ],
+        "incident_count": 7,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_4 November 2025.docx",
+        "total_paragraphs": 44,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Eastern Equatoria",
+          "Lakes",
+          "Unity",
+          "Warrap",
+          "Western Equatoria"
+        ],
+        "incident_count": 6,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_05 November 2025.docx",
+        "total_paragraphs": 18,
+        "has_highlights": true,
+        "states_mentioned": [],
+        "incident_count": 0,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_03 November 2025.docx",
+        "total_paragraphs": 118,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Unity",
+          "Lakes",
+          "Upper Nile",
+          "Western Equatoria",
+          "Warrap"
+        ],
+        "incident_count": 0,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_10 November 2025.docx",
+        "total_paragraphs": 27,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Eastern Equatoria",
+          "Warrap",
+          "Western Bahr el Ghazal",
+          "Unity"
+        ],
+        "incident_count": 3,
+        "structure": []
+      }
+    ],
+    "matrices": [
+      {
+        "file": "Weekly CivCas Matrix-1-7 November 2025.xlsx",
+        "error": "'<=' not supported between instances of 'datetime.datetime' and 'str'"
+      },
+      {
+        "file": "Weekly CivCas Matrix-03-03 November 2025.xlsx",
+        "total_rows": 70,
+        "columns": [
+          "Incident Code",
+          "Date of Interview",
+          "Month of interview/report",
+          "Date of Incident",
+          "Reporting Field Office",
+          "Incident State",
+          "Location of Incident",
+          "Source Information",
+          "Types of violations",
+          "Generalized Violations",
+          "Alleged Perpetrator(s)",
+          "Involved in Hostilities",
+          "Origin of Alleged Perpetrators",
+          "Ethnicity/Tribe of victim/survivor",
+          "Total Victims",
+          "Male (#)",
+          "Female (#)",
+          "Minor (M)",
+          "Minor (F)",
+          "Source of the information",
+          "Description",
+          "Update",
+          "Remarks by CMC/CRVT",
+          "Corroborated/Verified",
+          "Payam",
+          "County"
+        ],
+        "column_count": 26,
+        "states": [
+          "Magwi",
+          "Yei River County",
+          "Arbitrary arrest",
+          "Leer County",
+          "Cueibet County",
+          "Juba County",
+          "Lokiliri Payam, Juba County",
+          "Unity State",
+          NaN,
+          "Ikotos County",
+          "Conflict-Related Violations/Abuses",
+          "Lakes State",
+          "Upper Nile State",
+          "Mundri West County",
+          "Juba National prison high court",
+          "Sherikat Neighborhood of Juba",
+          "NBeG State",
+          "Western Equatoria State",
+          "Losawo village",
+          "Tambura County",
+          "Tambura Town",
+          "Budi County",
+          "Kapoeta North County",
+          "Rumbek East County",
+          "Maban County",
+          "Western Bhar El Ghazal State (WBeGS)",
+          "Ruweng Administrative Area",
+          "Torit County",
+          "South Sudan National Police Service (SSNPS) and civilian male",
+          "Aweil Town Municipality",
+          "South Sudan",
+          "Contempt of Court"
+        ],
+        "field_offices": [
+          "FOT",
+          "Yei Field Office",
+          "Bor Field Office",
+          "Bentiu",
+          "Rumbek Field Office",
+          "Juba Field Office",
+          "Bentiu Field Office",
+          "Malakal Field Office",
+          "Yambio Field Office",
+          NaN,
+          "Aweil Field Office",
+          "Wau Field Office",
+          "Yambio"
+        ],
+        "violations": {
+          "Killed": 10,
+          "Killed, Injured": 4,
+          "Injured": 3,
+          "Rape": 3,
+          "Murder": 3,
+          "Abduction": 2,
+          "Arrested": 2,
+          "Raped, Killed": 2,
+          "Gang rape": 1,
+          "Gang Rape": 1,
+          "Arbitrary arrest and detention": 1
+        },
+        "date_range": {
+          "min": "2022-10-19 00:00:00",
+          "max": "2025-11-07 00:00:00"
+        }
+      },
+      {
+        "file": "Weekly CivCas Matrix-3-9 November 2025.xlsx",
+        "error": "'<=' not supported between instances of 'datetime.datetime' and 'str'"
+      }
+    ],
+    "dailies": {
+      "total_dailies": 40,
+      "field_offices": {
+        "fot": 5,
+        "yei": 5,
+        "bor": 2,
+        "bentiu": 5,
+        "rumbek": 6,
+        "juba": 2,
+        "yambio": 5,
+        "aweil": 3,
+        "wau": 4
+      },
+      "date_patterns": [],
+      "file_names": [
+        "2025-11-06-UNMISS HRD FOT Daily Report.docx",
+        "20251105 UNMISS HRD Yei Field Office Daily Report.docx",
+        "2025-11-07_UNMISS HRD_Bor Field Office_Daily Report.docx",
+        "20251103 UNMISS HRD-Yei Field Office  Daily Report - Copy.docx",
+        "20251107 UNMISS HRD_Bentiu Field Office_Daily Report.docx",
+        "20251106 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "UNMISS_HRD_Juba Field Office_Daily Report-20251106.docx",
+        "20251105 UNMISS HRD_Bentiu Field Office_Daily Report.docx",
+        "20251107 UNMISS HRD Yei Field Office Daily Report.docx",
+        "2025-11-04_UNMISS HRD_Bor Field Office_Daily Report.docx",
+        "2025-11-05-UNMISS HRD FOT Daily Report.docx",
+        "20251105 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "20251103 UNMISS HRD_Bentiu Field Office_Daily Report.docx",
+        "20251105 UNMISS HRD MFO Daily Report.docx",
+        "20251104 UNMISS HRD Yambio Field Office Report_.docx",
+        "20251106 UNMISS HRD Yei Field Office Daily Report.docx",
+        "20251105 UNMISS HRD_Rumbek Field Office_October 2025 Monthly Report.docx",
+        "UNMISS_HRD_Juba Field Office_Daily Report-20251104.docx",
+        "2025-11-05 Aweil FO HRD Daily Human Rights Report.docx",
+        "20251103 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "20251105 UNMISS HRD_ Wau Field Office_ Daily Report.docx",
+        "20251104 UNMISS HRD-Yei Field Office  Daily Report - Copy.docx",
+        "20251106 UNMISS HRD Yambio Field Office Report_.docx",
+        "2025-11-03-UNMISS HRD FOT Daily Report.docx",
+        "20251103 UNMISS HRD Yambio Field Office Report\u00ad_.docx",
+        "2025-11-07-UNMISS HRD FOT Daily Report.docx",
+        "20251103 UNMISS HRD MFO Daily Report.docx",
+        "20251107 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "20251104 UNMISS HRD MFO Daily Report.docx",
+        "20251105 UNMISS HRD Yambio Field Office Report_.docx",
+        "20251107 UNMISS HRD_ Wau Field Office_ Daily Report.docx",
+        "20251106 UNMISS HRD_Bentiu Field Office_Daily Report.docx",
+        "2025-11-04-UNMISS HRD FOT Daily Report.docx",
+        "20251104 UNMISS HRD_Bentiu Field Office_Daily Report.docx",
+        "20251103 UNMISS HRD_ Wau Field Office_ Daily Report_.docx",
+        "2025-11-06 Aweil FO HRD Daily Human Rights Report.docx",
+        "20251107 UNMISS HRD Yambio Field Office Daily Situation Report.docx",
+        "20251106 UNMISS HRD_ Wau Field Office_ Daily Report.docx",
+        "20251104 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "2025-11-03 Aweil FO HRD Daily Human Rights Report.docx"
+      ]
+    }
+  },
+  "10-16": {
+    "week": "10-16",
+    "compiled_reports": [
+      {
+        "file": "HRD Daily Report_11 November 2025.docx",
+        "total_paragraphs": 39,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Eastern Equatoria",
+          "Unity",
+          "Warrap",
+          "Western Bahr el Ghazal",
+          "Western Equatoria"
+        ],
+        "incident_count": 5,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_12 November 2025.docx",
+        "total_paragraphs": 16,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Warrap"
+        ],
+        "incident_count": 1,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_14 November 2025.docx",
+        "total_paragraphs": 35,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Unity",
+          "Warrap",
+          "Western Bahr el Ghazal",
+          "Western Equatoria"
+        ],
+        "incident_count": 4,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_17 November 2025.docx",
+        "total_paragraphs": 50,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Eastern Equatoria",
+          "Jonglei",
+          "Warrap",
+          "Western Bahr el Ghazal",
+          "Western Equatoria"
+        ],
+        "incident_count": 7,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_13 November 2025.docx",
+        "total_paragraphs": 53,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Central Equatoria",
+          "Eastern Equatoria",
+          "Lakes",
+          "Warrap",
+          "Western Bahr el Ghazal",
+          "Western Equatoria",
+          "Unity"
+        ],
+        "incident_count": 8,
+        "structure": []
+      }
+    ],
+    "matrices": [],
+    "dailies": {
+      "total_dailies": 45,
+      "field_offices": {
+        "yei": 5,
+        "bor": 4,
+        "rumbek": 5,
+        "wau": 5,
+        "aweil": 5,
+        "bentiu": 5,
+        "fot": 3,
+        "yambio": 5,
+        "juba": 2
+      },
+      "date_patterns": [],
+      "file_names": [
+        "20251112 UNMISS HRD Yei Field Office Daily Report.docx",
+        "2025-11-11_UNMISS HRD_Bor Field Office_Daily Report.docx",
+        "20251112 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "20251111 UNMISS HRD_ Wau Field Office_ Daily Report.docx",
+        "2025-11-13 Aweil FO HRD Daily Human Rights Report.docx",
+        "20251111 UNMISS HRD_Bentiu Field Office_Daily Report_.docx",
+        "20251113 UNMISS HRD Yei Field Office Daily Report.docx",
+        "2025-11-10_UNMISS HRD_Bor Field Office_Daily Report.docx",
+        "20251111 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "20251110 UNMISS HRD_Bentiu Field Office_Daily Report_.docx",
+        "20251110 UNMISS HRD_ Wau Field Office_ Daily Report.docx",
+        "20251113 UNMISS HRD_ Wau Field Office_ Daily Report.docx",
+        "20251110 UNMISS HRD Yei Field Office Daily Report.docx",
+        "2025-11-13_UNMISS HRD_Bor Field Office_Daily Report.docx",
+        "2025-11-12-UNMISS HRD FOT Daily Report.docx",
+        "20251112 UNMISS HRD_ Wau Field Office_ Daily Report.docx",
+        "20251111 UNMISS HRD Yei Field Office Daily Report.docx",
+        "20251110 UNMISS HRD Yambio Field Office Daily Situation Report\u00ad_.docx",
+        "202501114 UNMISS HRD Yambio Field Office DSR.docx",
+        "2025-11-10 Aweil FO HRD Daily Human Rights Report.docx",
+        "20251113 UNMISS HRD_Bentiu Field Office_Daily Report.docx",
+        "WPAU Weekly Activities from 10 - 14 and planned activities from 17 -21 November 2025_final.docx",
+        "20251114 UNMISS HRD MFO Daily Report .docx",
+        "UNMISS_HRD_Juba Field Office_Daily Report-20251112.docx",
+        "20251112 UNMISS HRD MFO Daily Report .docx",
+        "2025-11-16 Aweil FO HRD Daily Human Rights Report2.docx",
+        "2025-11-10-UNMISS HRD FOT Daily Report.docx",
+        "2025-11-14-UNMISS HRD FOT Daily Report.docx",
+        "20251113 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "2025-11-12 Aweil FO HRD Daily Human Rights Report.docx",
+        "20251110 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "20251110 UNMISS HRD MFO Daily Report .docx",
+        "2025-11-14_UNMISS HRD_Bor Field Office_Daily Report.docx",
+        "UNMISS_HRD_Juba Field Office_Daily Report-20251113.docx",
+        "20251112 UNMISS HRD Yambio Field Office Daily Situation Report_.docx",
+        "2025-11-11 Aweil FO HRD Daily Human Rights Report.docx",
+        "20251113 UNMISS HRD MFO Daily Report .docx",
+        "20251111 UNMISS HRD Yambio Field Office Daily Situation Report_.docx",
+        "20251114 UNMISS HRD Yei Field Office Daily Report.docx",
+        "20251114 UNMISS HRD_ Wau Field Office_ Daily Report..docx",
+        "20251114 UNMISS HRD_Bentiu Field Office_Daily Report_.docx",
+        "20251113 UNMISS HRD Yambio Field Office Daily Situation Report_.docx",
+        "20251111 UNMISS HRD MFO Daily Report .docx",
+        "20251112 UNMISS HRD_Bentiu Field Office_Daily Report.docx",
+        "20251114 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx"
+      ]
+    }
+  },
+  "17-23": {
+    "week": "17-23",
+    "compiled_reports": [
+      {
+        "file": "HRD Daily Report_21 November 2025.docx",
+        "total_paragraphs": 37,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Jonglei",
+          "Upper Nile",
+          "Warrap",
+          "Unity",
+          "Western Bahr el Ghazal"
+        ],
+        "incident_count": 5,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_19 November 2025.docx",
+        "total_paragraphs": 46,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Central Equatoria",
+          "Jonglei",
+          "Lakes",
+          "Unity",
+          "Warrap",
+          "Western Bahr el Ghazal"
+        ],
+        "incident_count": 6,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_18 November 2025.docx",
+        "total_paragraphs": 75,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Central Equatoria",
+          "Eastern Equatoria",
+          "Jonglei",
+          "Lakes",
+          "Unity",
+          "Upper Nile",
+          "Warrap",
+          "Western Bahr el Ghazal",
+          "Western Equatoria"
+        ],
+        "incident_count": 11,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_20 November 2025.docx",
+        "total_paragraphs": 34,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Central Equatoria",
+          "Eastern Equatoria",
+          "Western Equatoria"
+        ],
+        "incident_count": 3,
+        "structure": []
+      }
+    ],
+    "matrices": [],
+    "dailies": {
+      "total_dailies": 38,
+      "field_offices": {
+        "rumbek": 4,
+        "fot": 3,
+        "wau": 4,
+        "bentiu": 5,
+        "aweil": 3,
+        "yambio": 4,
+        "bor": 3,
+        "juba": 3,
+        "yei": 4
+      },
+      "date_patterns": [],
+      "file_names": [
+        "20251118 UNMISS HRD_ Rumbek Field Office_ Daily Report (2).docx",
+        "2025-11-19-UNMISS HRD FOT Daily Report.docx",
+        "20251117 UNMISS HRD MFO Daily Report .docx",
+        "20251120 UNMISS HRD_ Wau Field Office_ Daily Report (002).docx",
+        "20251119 UNMISS HRD MFO Daily Report.docx",
+        "20251120 UNMISS HRD_Bentiu Field Office_Daily Report_.docx",
+        "2025-11-19 Aweil FO HRD Daily Human Rights Report.docx",
+        "20251121 UNMISS HRD YFO DSR.docx",
+        "20251121 UNMISS HRD MFO Daily Report .docx",
+        "2025-11-21-UNMISS HRD FOT Daily Report.docx",
+        "20251121 UNMISS HRD_Bentiu Field Office_Daily Report.docx",
+        "20251120 UNMISS HRD Yambio Field Office Daily Report.docx",
+        "2025-11-22 Aweil FO HRD Daily Human Rights Report9.docx",
+        "UNMISS HRD_Bor Field Office_Daily Report 2025-11-19.docx",
+        "20251119 UNMISS HRD_Bentiu Field Office_Daily Report_.docx",
+        "20251119 UNMISS HRD Yambio Field Office Daily situation report.docx",
+        "2025-11-18 Aweil FO HRD Daily Human Rights Report.docx",
+        "20251118 UNMISS HRD_Bentiu Field Office_Daily Report_.docx",
+        "20251118 UNMISS HRD_ Wau Field Office_ Daily Report.docx",
+        "20251119 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "20251117 UNMISS HRD Yambio Field Office Daily Situation Report.docx",
+        "20251119 UNMISS HRD_ Wau Field Office_ Daily Report.docx",
+        "20251121 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "2025-11-18_UNMISS HRD_Bor Field Office_Daily Report.docx",
+        "20251117 UNMISS HRD_Bentiu Field Office_Daily Report_.docx",
+        "UNMISS_HRD_Juba Field Office_Daily Report-20251118.docx",
+        "20251121 UNMISS HRD_ Wau Field Office_ Daily Report (002).docx",
+        "20251117 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "20251118 UNMISS HRD Yei Field Office Daily Report.docx",
+        "UNMISS_HRD_Juba Field Office_Daily Report-20251121 (003).docx",
+        "20251120 UNMISS HRD - Yei Field Office Daily Report.docx",
+        "20251120 UNMISS HRD MFO Daily Report.docx",
+        "20251121 UNMISS HRD Yei Field Office Daily Report.docx",
+        "20251119 UNMISS HRD Yei Field Office Daily Report.docx",
+        "20251118 UNMISS HRD Yambio Field Office Daily Situation Report.docx",
+        "2025-11-17-UNMISS HRD FOT Daily Report.docx",
+        "UNMISS_HRD_Juba Field Office_Daily Report-20251119.docx",
+        "UNMISS HRD Bor FO _Jonglei state-GPAA_Daily Report 20 November 2025.docx"
+      ]
+    }
+  },
+  "24-30": {
+    "week": "24-30",
+    "compiled_reports": [
+      {
+        "file": "HRD Daily Report_27 November 2025.docx",
+        "total_paragraphs": 36,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Central Equatoria",
+          "Upper Nile",
+          "Warrap",
+          "Unity"
+        ],
+        "incident_count": 3,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_26 November 2025.docx",
+        "total_paragraphs": 57,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Central Equatoria",
+          "Eastern Equatoria",
+          "Jonglei",
+          "Unity",
+          "Warrap",
+          "Western Bahr el Ghazal",
+          "Western Equatoria"
+        ],
+        "incident_count": 7,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_25 November 2025.docx",
+        "total_paragraphs": 51,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Eastern Equatoria",
+          "Jonglei",
+          "Lakes",
+          "Warrap",
+          "Western Equatoria",
+          "Unity"
+        ],
+        "incident_count": 8,
+        "structure": []
+      },
+      {
+        "file": "HRD Daily Report_28 November 2025.docx",
+        "total_paragraphs": 37,
+        "has_highlights": true,
+        "states_mentioned": [
+          "Jonglei",
+          "Lakes",
+          "Unity",
+          "Warrap",
+          "Central Equatoria"
+        ],
+        "incident_count": 4,
+        "structure": []
+      }
+    ],
+    "matrices": [
+      {
+        "file": "Weekly CivCas Matrix - 24-30 Nov 25.xlsx",
+        "error": "'<=' not supported between instances of 'str' and 'datetime.datetime'"
+      }
+    ],
+    "dailies": {
+      "total_dailies": 42,
+      "field_offices": {
+        "yei": 5,
+        "bentiu": 5,
+        "aweil": 5,
+        "wau": 5,
+        "rumbek": 4,
+        "juba": 3,
+        "bor": 4,
+        "fot": 2,
+        "yambio": 5
+      },
+      "date_patterns": [],
+      "file_names": [
+        "20251126 UNMISS HRD Yei Field Office Daily Report.docx",
+        "20251126 UNMISS HRD MFO Daily Report.docx",
+        "20251128 UNMISS HRD_Bentiu Field Office_Daily Report.docx",
+        "2025-11-27 Aweil FO HRD Daily Human Rights Report.docx",
+        "20251127 UNMISS HRD Yei Field Office Daily Report.docx",
+        "20251128 UNMISS HRD_ Wau Field Office_ Daily Report (002).docx",
+        "20251124 UNMISS HRD_ Wau Field Office_ Daily Report (002).docx",
+        "20251125 UNMISS HRD MFO Daily Report.docx",
+        "20251127 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "UNMISS_HRD_Juba Field Office_Daily Report-20251126.docx",
+        "2025-11-24 Aweil FO HRD Daily Human Rights Report.docx",
+        "20251128 UNMISS HRD-Yei Field Office  Daily Report.docx",
+        "20251124 UNMISS HRD Yei Field Office Daily Report.docx",
+        "UNMISS HRD Bor FO _Jonglei state-GPAA_Daily Report 24 November 2025.docx",
+        "2025-11-25-UNMISS HRD FOT Daily Report.docx",
+        "20251125 UNMISS HRD Yambio Field Office Daily Situation Report-_.docx",
+        "20251126 UNMISS HRD_ Wau Field Office_ Daily Report (002).docx",
+        "UNMISS HRD Bor FO _Jonglei state-GPAA_Daily Report 27 November 2025.docx",
+        "2025-11-30 Aweil FO HRD Daily Human Rights Report2.docx",
+        "20251128 UNMISS HRD Yambio Field Office Daily situation report_.docx",
+        "20251125 UNMISS HRD Yei Field Office Daily Report.docx",
+        "20251127 UNMISS HRD_Bentiu Field Office_Daily Report.docx",
+        "20251124 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "20251125 UNMISS HRD_ Rumbek Field Office_ Daily Report (2).docx",
+        "20251125 UNMISS HRD_ Wau Field Office_ Daily Report (002).docx",
+        "20251127 UNMISS HRD Yambio Field Office Daily situation report\u00ad_.docx",
+        "20251127 UNMISS HRD MFO Daily Report.docx",
+        "UNMISS_HRD_Juba Field Office_Daily Report-20251124.docx",
+        "UNMISS_HRD_Juba Field Office_Daily Report-20251125.docx",
+        "Updated 20251128 UNMISS HRD_Bentiu Field Office_Daily Report.docx",
+        "20251124 UNMISS HRD Yambio Field Office Daily Situation Report\u00ad_.docx",
+        "20251126 UNMISS HRD Yambio Field Office Daily situation report.docx",
+        "20251127 UNMISS HRD_ Wau Field Office_ Daily Report (002).docx",
+        "20251125 UNMISS HRD_Bentiu Field Office_Daily Report .docx",
+        "20251128 UNMISS HRD_ Rumbek Field Office_ Daily Report.docx",
+        "UNMISS HRD Bor FO _Jonglei state-GPAA_Daily Report 25 November 2025.docx",
+        "UNMISS HRD Bor FO _Jonglei state-GPAA_Daily Report 28 November 2025.docx",
+        "20251128 UNMISS HRD MFO Daily Report.docx",
+        "2025-11-26 Aweil FO HRD Daily Human Rights Report3.docx",
+        "2025-11-25 Aweil FO HRD Daily Human Rights Report.docx",
+        "2025-11-24-UNMISS HRD FOT Daily Report.docx",
+        "20251126 UNMISS HRD_Bentiu Field Office_Daily Report.docx"
+      ]
+    }
+  }
+}

@@ -1,7 +1,16 @@
 """Diagnostics page for monitoring performance and cache statistics."""
 import streamlit as st
+import sys
+from pathlib import Path
+
+# Add project root to Python path to ensure imports work
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from app.core.duckdb_store import DuckDBStore
-from app.core.config import DUCKDB_PATH
+from app.core.config import DUCKDB_PATH, LAYER_NAMES
+from app.core.security import sanitize_layer_name
 from datetime import datetime, timedelta
 
 
@@ -58,14 +67,18 @@ with col2:
 
 # Layer statistics
 st.subheader("Layer Statistics")
-from app.core.config import LAYER_NAMES
 
 layer_stats = []
 for layer_name in LAYER_NAMES.values():
+    # Validate layer name to prevent SQL injection
+    sanitized_layer = sanitize_layer_name(layer_name)
+    if not sanitized_layer:
+        continue  # Skip invalid layers
+    
     count = db_store.conn.execute(
-        f"SELECT COUNT(*) FROM {layer_name}"
+        f"SELECT COUNT(*) FROM {sanitized_layer}"
     ).fetchone()[0]
-    layer_stats.append({"Layer": layer_name, "Features": count})
+    layer_stats.append({"Layer": sanitized_layer, "Features": count})
 
 if layer_stats:
     import pandas as pd

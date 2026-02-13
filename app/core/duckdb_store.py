@@ -4,10 +4,12 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any
 import geopandas as gpd
 from shapely import wkb
+from shapely.geometry import Point
 import json
 from datetime import datetime
 from app.core.config import DUCKDB_PATH, LAYER_NAMES
 from app.core.normalization import normalize_text
+from app.core.security import sanitize_layer_name, validate_feature_id
 
 
 class DuckDBStore:
@@ -85,6 +87,12 @@ class DuckDBStore:
         
         # Initialize villages schema
         self._init_villages_schema()
+        
+        # Initialize feedback schema
+        self._init_feedback_schema()
+        
+        # Initialize OSM features schema
+        self._init_osm_features_schema()
         
         # DuckDB is autocommit, no need for commit()
     
@@ -168,6 +176,88 @@ class DuckDBStore:
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_alternate_names_normalized ON village_alternate_names(normalized_alternate_name)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_alternate_names_village ON village_alternate_names(village_id)")
     
+    def _init_feedback_schema(self):
+        """Initialize feedback and pattern performance tables."""
+        # Extraction feedback table
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS extraction_feedback (
+                id INTEGER PRIMARY KEY,
+                document_hash VARCHAR,
+                original_text TEXT,
+                extracted_text TEXT,
+                method VARCHAR,
+                user_corrected_text TEXT,
+                is_correct BOOLEAN,
+                context_text TEXT,
+                geocode_result_json TEXT,
+                feedback_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Regex pattern performance table
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS regex_pattern_performance (
+                id INTEGER PRIMARY KEY,
+                pattern_string TEXT,
+                success_count INTEGER DEFAULT 0,
+                failure_count INTEGER DEFAULT 0,
+                examples TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create indexes for feedback
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_document_hash ON extraction_feedback(document_hash)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_method ON extraction_feedback(method)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_pattern_performance_pattern ON regex_pattern_performance(pattern_string)")
+    
+    def _init_osm_features_schema(self):
+        """Initialize OSM features tables (roads and POIs)."""
+        # Roads table
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS osm_roads (
+                feature_id VARCHAR PRIMARY KEY,
+                osm_id BIGINT NOT NULL,
+                osm_type VARCHAR NOT NULL,
+                name VARCHAR,
+                highway VARCHAR,
+                surface VARCHAR,
+                geometry_wkb BLOB NOT NULL,
+                geometry_geojson TEXT,
+                centroid_lon DOUBLE,
+                centroid_lat DOUBLE,
+                properties TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(osm_id, osm_type)
+            )
+        """)
+        
+        # POIs table
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS osm_pois (
+                feature_id VARCHAR PRIMARY KEY,
+                osm_id BIGINT NOT NULL,
+                osm_type VARCHAR NOT NULL,
+                name VARCHAR,
+                category VARCHAR NOT NULL,
+                lon DOUBLE NOT NULL,
+                lat DOUBLE NOT NULL,
+                geometry_wkb BLOB NOT NULL,
+                geometry_geojson TEXT,
+                properties TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(osm_id, osm_type)
+            )
+        """)
+        
+        # Create indexes for OSM features
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_osm_roads_bbox ON osm_roads(centroid_lon, centroid_lat)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_osm_roads_highway ON osm_roads(highway)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_osm_pois_bbox ON osm_pois(lon, lat)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_osm_pois_category ON osm_pois(category)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_osm_pois_name ON osm_pois(name)")
+    
     def ingest_geojson(
         self,
         layer_name: str,
@@ -181,15 +271,22 @@ class DuckDBStore:
             layer_name: Name of the layer (must be in LAYER_NAMES)
             gdf: GeoDataFrame to ingest
             name_field: Field name containing feature names
+            
+        Raises:
+            ValueError: If layer_name is not in the allowed whitelist
         """
-        if layer_name not in LAYER_NAMES.values():
-            raise ValueError(f"Unknown layer name: {layer_name}")
+        # Validate layer name to prevent SQL injection
+        sanitized_layer = sanitize_layer_name(layer_name)
+        if not sanitized_layer:
+            raise ValueError(f"Invalid layer name: {layer_name}. Must be one of {list(LAYER_NAMES.values())}")
+        
+        layer_name = sanitized_layer
         
         # Ensure WGS84
         if gdf.crs != "EPSG:4326":
             gdf = gdf.to_crs("EPSG:4326")
         
-        # Clear existing data
+        # Clear existing data (layer_name is now validated)
         self.conn.execute(f"DELETE FROM {layer_name}")
         
         # Prepare data
@@ -628,10 +725,27 @@ class DuckDBStore:
         # DuckDB is autocommit
     
     def get_geometry(self, layer: str, feature_id: str) -> Optional[Any]:
-        """Get geometry for a feature."""
+        """
+        Get geometry for a feature.
+        
+        Args:
+            layer: Layer name (validated against whitelist)
+            feature_id: Feature ID (validated)
+            
+        Returns:
+            Geometry object or None if not found
+        """
+        # Validate inputs to prevent SQL injection
+        sanitized_layer = sanitize_layer_name(layer)
+        if not sanitized_layer:
+            raise ValueError(f"Invalid layer name: {layer}")
+        
+        if not validate_feature_id(feature_id):
+            raise ValueError(f"Invalid feature_id: {feature_id}")
+        
         result = self.conn.execute(f"""
             SELECT geometry_wkb
-            FROM {layer}
+            FROM {sanitized_layer}
             WHERE feature_id = ?
         """, [feature_id]).fetchone()
         
@@ -640,10 +754,27 @@ class DuckDBStore:
         return None
     
     def get_feature(self, layer: str, feature_id: str) -> Optional[Dict[str, Any]]:
-        """Get full feature data."""
+        """
+        Get full feature data.
+        
+        Args:
+            layer: Layer name (validated against whitelist)
+            feature_id: Feature ID (validated)
+            
+        Returns:
+            Feature dictionary or None if not found
+        """
+        # Validate inputs to prevent SQL injection
+        sanitized_layer = sanitize_layer_name(layer)
+        if not sanitized_layer:
+            raise ValueError(f"Invalid layer name: {layer}")
+        
+        if not validate_feature_id(feature_id):
+            raise ValueError(f"Invalid feature_id: {feature_id}")
+        
         result = self.conn.execute(f"""
             SELECT feature_id, name, centroid_lon, centroid_lat, properties
-            FROM {layer}
+            FROM {sanitized_layer}
             WHERE feature_id = ?
         """, [feature_id]).fetchone()
         
@@ -1300,6 +1431,528 @@ class DuckDBStore:
         result = self.conn.execute("DELETE FROM villages WHERE village_id = ?", [village_id])
         
         return result.rowcount > 0
+    
+    def save_extraction_feedback(
+        self,
+        document_hash: str,
+        original_text: str,
+        extracted_text: str,
+        method: str,
+        user_corrected_text: Optional[str] = None,
+        is_correct: Optional[bool] = None,
+        context_text: Optional[str] = None,
+        geocode_result_json: Optional[str] = None
+    ) -> int:
+        """Save user feedback on an extraction."""
+        feedback_id = self._get_next_id("extraction_feedback")
+        
+        self.conn.execute("""
+            INSERT INTO extraction_feedback (
+                id, document_hash, original_text, extracted_text, method,
+                user_corrected_text, is_correct, context_text, geocode_result_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            feedback_id, document_hash, original_text, extracted_text, method,
+            user_corrected_text, is_correct, context_text, geocode_result_json
+        ])
+        
+        return feedback_id
+    
+    def get_extraction_feedback(self, document_hash: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get extraction feedback, optionally filtered by document hash."""
+        if document_hash:
+            results = self.conn.execute("""
+                SELECT id, document_hash, original_text, extracted_text, method,
+                       user_corrected_text, is_correct, context_text, geocode_result_json,
+                       feedback_timestamp
+                FROM extraction_feedback
+                WHERE document_hash = ?
+                ORDER BY feedback_timestamp DESC
+            """, [document_hash]).fetchall()
+        else:
+            results = self.conn.execute("""
+                SELECT id, document_hash, original_text, extracted_text, method,
+                       user_corrected_text, is_correct, context_text, geocode_result_json,
+                       feedback_timestamp
+                FROM extraction_feedback
+                ORDER BY feedback_timestamp DESC
+                LIMIT 1000
+            """).fetchall()
+        
+        return [
+            {
+                "id": r[0],
+                "document_hash": r[1],
+                "original_text": r[2],
+                "extracted_text": r[3],
+                "method": r[4],
+                "user_corrected_text": r[5],
+                "is_correct": r[6],
+                "context_text": r[7],
+                "geocode_result_json": r[8],
+                "feedback_timestamp": r[9]
+            }
+            for r in results
+        ]
+    
+    def update_pattern_performance(
+        self,
+        pattern_string: str,
+        success: bool = True,
+        example: Optional[str] = None
+    ):
+        """Update pattern performance tracking."""
+        # Check if pattern exists
+        existing = self.conn.execute("""
+            SELECT id, success_count, failure_count, examples
+            FROM regex_pattern_performance
+            WHERE pattern_string = ?
+        """, [pattern_string]).fetchone()
+        
+        if existing:
+            # Update existing
+            pattern_id, success_count, failure_count, examples = existing
+            if success:
+                success_count += 1
+            else:
+                failure_count += 1
+            
+            # Update examples (keep last 10)
+            examples_list = json.loads(examples) if examples else []
+            if example:
+                examples_list.append(example)
+                examples_list = examples_list[-10:]  # Keep last 10
+            
+            self.conn.execute("""
+                UPDATE regex_pattern_performance
+                SET success_count = ?, failure_count = ?, examples = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, [success_count, failure_count, json.dumps(examples_list), pattern_id])
+        else:
+            # Insert new
+            pattern_id = self._get_next_id("regex_pattern_performance")
+            examples_list = [example] if example else []
+            
+            self.conn.execute("""
+                INSERT INTO regex_pattern_performance (
+                    id, pattern_string, success_count, failure_count, examples
+                ) VALUES (?, ?, ?, ?, ?)
+            """, [
+                pattern_id, pattern_string,
+                1 if success else 0,
+                0 if success else 1,
+                json.dumps(examples_list)
+            ])
+    
+    def get_pattern_performance(self) -> List[Dict[str, Any]]:
+        """Get all pattern performance statistics."""
+        results = self.conn.execute("""
+            SELECT id, pattern_string, success_count, failure_count, examples,
+                   created_at, updated_at
+            FROM regex_pattern_performance
+            ORDER BY (success_count + failure_count) DESC
+        """).fetchall()
+        
+        return [
+            {
+                "id": r[0],
+                "pattern_string": r[1],
+                "success_count": r[2],
+                "failure_count": r[3],
+                "examples": json.loads(r[4]) if r[4] else [],
+                "created_at": r[5],
+                "updated_at": r[6],
+                "success_rate": r[2] / (r[2] + r[3]) if (r[2] + r[3]) > 0 else 0.0
+            }
+            for r in results
+        ]
+    
+    def ingest_osm_roads(self, gdf: gpd.GeoDataFrame):
+        """
+        Ingest OSM roads into database.
+        
+        Args:
+            gdf: GeoDataFrame with roads (must have 'osm_id', 'osm_type', 'geometry' columns)
+        """
+        import hashlib
+        
+        # Ensure WGS84
+        if gdf.crs != "EPSG:4326":
+            gdf = gdf.to_crs("EPSG:4326")
+        
+        rows = []
+        for idx, row in gdf.iterrows():
+            osm_id = row.get("osm_id", idx)
+            osm_type = row.get("osm_type", "way")
+            feature_id = f"{osm_type}_{osm_id}"
+            
+            geometry = row.geometry
+            geometry_wkb = wkb.dumps(geometry, hex=True)
+            
+            # Create GeoJSON
+            feature_dict = {
+                "type": "Feature",
+                "geometry": json.loads(gpd.GeoSeries([geometry]).to_json())["features"][0]["geometry"],
+                "properties": {k: str(v) for k, v in row.items() if k != "geometry"}
+            }
+            geometry_geojson = json.dumps(feature_dict)
+            
+            # Compute centroid
+            centroid_lon, centroid_lat = None, None
+            if hasattr(geometry, 'centroid'):
+                centroid = geometry.centroid
+                centroid_lon = centroid.x
+                centroid_lat = centroid.y
+            
+            properties = json.dumps({k: str(v) for k, v in row.items() if k != "geometry"})
+            
+            rows.append((
+                feature_id,
+                int(osm_id),
+                osm_type,
+                row.get("name"),
+                row.get("highway"),
+                row.get("surface"),
+                geometry_wkb,
+                geometry_geojson,
+                centroid_lon,
+                centroid_lat,
+                properties,
+                datetime.now()
+            ))
+        
+        if rows:
+            # Use INSERT OR REPLACE to handle duplicates
+            self.conn.executemany(
+                """
+                INSERT OR REPLACE INTO osm_roads 
+                (feature_id, osm_id, osm_type, name, highway, surface, geometry_wkb, 
+                 geometry_geojson, centroid_lon, centroid_lat, properties, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows
+            )
+    
+    def ingest_osm_pois(self, gdf: gpd.GeoDataFrame):
+        """
+        Ingest OSM POIs into database.
+        
+        Args:
+            gdf: GeoDataFrame with POIs (must have 'osm_id', 'osm_type', 'category', 'geometry' columns)
+        """
+        import hashlib
+        
+        # Ensure WGS84
+        if gdf.crs != "EPSG:4326":
+            gdf = gdf.to_crs("EPSG:4326")
+        
+        rows = []
+        for idx, row in gdf.iterrows():
+            osm_id = row.get("osm_id", idx)
+            osm_type = row.get("osm_type", "node")
+            feature_id = f"{osm_type}_{osm_id}"
+            
+            geometry = row.geometry
+            geometry_wkb = wkb.dumps(geometry, hex=True)
+            
+            # Create GeoJSON
+            feature_dict = {
+                "type": "Feature",
+                "geometry": json.loads(gpd.GeoSeries([geometry]).to_json())["features"][0]["geometry"],
+                "properties": {k: str(v) for k, v in row.items() if k != "geometry"}
+            }
+            geometry_geojson = json.dumps(feature_dict)
+            
+            # Get coordinates (for points, use directly; for others, use centroid)
+            if isinstance(geometry, Point):
+                lon = geometry.x
+                lat = geometry.y
+            else:
+                centroid = geometry.centroid
+                lon = centroid.x
+                lat = centroid.y
+            
+            properties = json.dumps({k: str(v) for k, v in row.items() if k != "geometry"})
+            
+            rows.append((
+                feature_id,
+                int(osm_id),
+                osm_type,
+                row.get("name"),
+                row.get("category"),
+                lon,
+                lat,
+                geometry_wkb,
+                geometry_geojson,
+                properties,
+                datetime.now()
+            ))
+        
+        if rows:
+            # Use INSERT OR REPLACE to handle duplicates
+            self.conn.executemany(
+                """
+                INSERT OR REPLACE INTO osm_pois 
+                (feature_id, osm_id, osm_type, name, category, lon, lat, geometry_wkb, 
+                 geometry_geojson, properties, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows
+            )
+    
+    def get_nearby_osm_pois(
+        self,
+        lon: float,
+        lat: float,
+        distance_km: float = 5.0,
+        categories: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get nearby OSM POIs within a distance.
+        
+        Args:
+            lon: Longitude
+            lat: Latitude
+            distance_km: Distance in kilometers
+            categories: Optional list of categories to filter by
+            
+        Returns:
+            List of POI dictionaries
+        """
+        from shapely.geometry import Point
+        import math
+        
+        # Rough bounding box calculation (1 degree ≈ 111 km)
+        degree_buffer = distance_km / 111.0
+        
+        where_clauses = [
+            "lon BETWEEN ? AND ?",
+            "lat BETWEEN ? AND ?"
+        ]
+        params = [
+            lon - degree_buffer,
+            lon + degree_buffer,
+            lat - degree_buffer,
+            lat + degree_buffer
+        ]
+        
+        if categories:
+            placeholders = ",".join(["?"] * len(categories))
+            where_clauses.append(f"category IN ({placeholders})")
+            params.extend(categories)
+        
+        where_sql = " AND ".join(where_clauses)
+        
+        results = self.conn.execute(f"""
+            SELECT feature_id, osm_id, osm_type, name, category, lon, lat, 
+                   geometry_geojson, properties
+            FROM osm_pois
+            WHERE {where_sql}
+        """, params).fetchall()
+        
+        # Calculate actual distances and filter
+        poi_list = []
+        for row in results:
+            poi_lon = row[5]
+            poi_lat = row[6]
+            
+            # Haversine distance calculation
+            dlat = math.radians(poi_lat - lat)
+            dlon = math.radians(poi_lon - lon)
+            a = math.sin(dlat/2)**2 + math.cos(math.radians(lat)) * math.cos(math.radians(poi_lat)) * math.sin(dlon/2)**2
+            c = 2 * math.asin(math.sqrt(a))
+            distance = 6371 * c  # Earth radius in km
+            
+            if distance <= distance_km:
+                properties = json.loads(row[8]) if row[8] else {}
+                poi_list.append({
+                    "feature_id": row[0],
+                    "osm_id": row[1],
+                    "osm_type": row[2],
+                    "name": row[3],
+                    "category": row[4],
+                    "lon": poi_lon,
+                    "lat": poi_lat,
+                    "distance_km": round(distance, 2),
+                    "geometry_geojson": row[7],
+                    "properties": properties
+                })
+        
+        # Sort by distance
+        poi_list.sort(key=lambda x: x["distance_km"])
+        
+        return poi_list
+    
+    def get_nearby_osm_roads(
+        self,
+        lon: float,
+        lat: float,
+        distance_km: float = 5.0
+    ) -> List[Dict[str, Any]]:
+        """
+        Get nearby OSM roads within a distance.
+        
+        Args:
+            lon: Longitude
+            lat: Latitude
+            distance_km: Distance in kilometers
+            
+        Returns:
+            List of road dictionaries
+        """
+        from shapely.geometry import Point
+        from shapely import wkb
+        import math
+        
+        # Rough bounding box calculation
+        degree_buffer = distance_km / 111.0
+        
+        results = self.conn.execute("""
+            SELECT feature_id, osm_id, osm_type, name, highway, surface,
+                   geometry_wkb, geometry_geojson, centroid_lon, centroid_lat, properties
+            FROM osm_roads
+            WHERE centroid_lon BETWEEN ? AND ? AND centroid_lat BETWEEN ? AND ?
+        """, [
+            lon - degree_buffer,
+            lon + degree_buffer,
+            lat - degree_buffer,
+            lat + degree_buffer
+        ]).fetchall()
+        
+        # Calculate actual distances and filter
+        road_list = []
+        point = Point(lon, lat)
+        
+        for row in results:
+            geometry_wkb = row[6]
+            try:
+                geometry = wkb.loads(geometry_wkb, hex=True)
+                # Calculate distance to line
+                distance_m = geometry.distance(point) * 111000  # Convert to meters
+                calculated_distance_km = distance_m / 1000
+                
+                if calculated_distance_km <= distance_km:
+                    properties = json.loads(row[10]) if row[10] else {}
+                    road_list.append({
+                        "feature_id": row[0],
+                        "osm_id": row[1],
+                        "osm_type": row[2],
+                        "name": row[3],
+                        "highway": row[4],
+                        "surface": row[5],
+                        "distance_km": round(calculated_distance_km, 2),
+                        "geometry_geojson": row[7],
+                        "properties": properties
+                    })
+            except Exception:
+                continue
+        
+        # Sort by distance
+        road_list.sort(key=lambda x: x["distance_km"])
+        
+        return road_list
+    
+    def get_osm_pois_in_bbox(
+        self,
+        min_lon: float,
+        min_lat: float,
+        max_lon: float,
+        max_lat: float,
+        categories: Optional[List[str]] = None
+    ) -> gpd.GeoDataFrame:
+        """
+        Get OSM POIs in a bounding box.
+        
+        Args:
+            min_lon: Minimum longitude
+            min_lat: Minimum latitude
+            max_lon: Maximum longitude
+            max_lat: Maximum latitude
+            categories: Optional list of categories to filter by
+            
+        Returns:
+            GeoDataFrame with POIs
+        """
+        where_clauses = [
+            "lon BETWEEN ? AND ?",
+            "lat BETWEEN ? AND ?"
+        ]
+        params = [min_lon, max_lon, min_lat, max_lat]
+        
+        if categories:
+            placeholders = ",".join(["?"] * len(categories))
+            where_clauses.append(f"category IN ({placeholders})")
+            params.extend(categories)
+        
+        where_sql = " AND ".join(where_clauses)
+        
+        results = self.conn.execute(f"""
+            SELECT feature_id, name, category, lon, lat, geometry_wkb, properties
+            FROM osm_pois
+            WHERE {where_sql}
+        """, params).fetchall()
+        
+        if not results:
+            return gpd.GeoDataFrame(crs="EPSG:4326")
+        
+        features = []
+        for row in results:
+            geometry = wkb.loads(row[5], hex=True)
+            properties = json.loads(row[6]) if row[6] else {}
+            features.append({
+                "feature_id": row[0],
+                "name": row[1],
+                "category": row[2],
+                "lon": row[3],
+                "lat": row[4],
+                "geometry": geometry,
+                "properties": properties
+            })
+        
+        return gpd.GeoDataFrame(features, crs="EPSG:4326")
+    
+    def get_osm_roads_in_bbox(
+        self,
+        min_lon: float,
+        min_lat: float,
+        max_lon: float,
+        max_lat: float
+    ) -> gpd.GeoDataFrame:
+        """
+        Get OSM roads in a bounding box.
+        
+        Args:
+            min_lon: Minimum longitude
+            min_lat: Minimum latitude
+            max_lon: Maximum longitude
+            max_lat: Maximum latitude
+            
+        Returns:
+            GeoDataFrame with roads
+        """
+        results = self.conn.execute("""
+            SELECT feature_id, name, highway, surface, geometry_wkb, properties
+            FROM osm_roads
+            WHERE centroid_lon BETWEEN ? AND ? AND centroid_lat BETWEEN ? AND ?
+        """, [min_lon, max_lon, min_lat, max_lat]).fetchall()
+        
+        if not results:
+            return gpd.GeoDataFrame(crs="EPSG:4326")
+        
+        features = []
+        for row in results:
+            geometry = wkb.loads(row[4], hex=True)
+            properties = json.loads(row[5]) if row[5] else {}
+            features.append({
+                "feature_id": row[0],
+                "name": row[1],
+                "highway": row[2],
+                "surface": row[3],
+                "geometry": geometry,
+                "properties": properties
+            })
+        
+        return gpd.GeoDataFrame(features, crs="EPSG:4326")
     
     def close(self):
         """Close database connection."""

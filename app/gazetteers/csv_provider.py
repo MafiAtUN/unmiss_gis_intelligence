@@ -5,6 +5,7 @@ from shapely.geometry import Point
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from app.gazetteers.base import GazetteerProvider
+from app.utils.logging import log_structured, log_error
 
 
 class CSVProvider(GazetteerProvider):
@@ -43,7 +44,10 @@ class CSVProvider(GazetteerProvider):
             
             # Validate required fields
             if self.lon_field not in df.columns or self.lat_field not in df.columns:
-                print(f"CSV missing required fields: {self.lon_field}, {self.lat_field}")
+                log_structured("warning", "CSV missing required fields", 
+                             module="csv_provider", function="_load_data",
+                             lon_field=self.lon_field, lat_field=self.lat_field,
+                             csv_path=str(self.csv_path))
                 return
             
             # Create geometry
@@ -53,9 +57,13 @@ class CSVProvider(GazetteerProvider):
             ]
             
             self.gdf = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
+            log_structured("info", "CSV data loaded successfully",
+                         module="csv_provider", function="_load_data",
+                         row_count=len(self.gdf), csv_path=str(self.csv_path))
             
         except Exception as e:
-            print(f"Error loading CSV data: {e}")
+            log_error(e, {"module": "csv_provider", "function": "_load_data", 
+                         "csv_path": str(self.csv_path)})
             self.gdf = gpd.GeoDataFrame()
     
     def fetch_features(self, query: str, bbox: tuple = None) -> gpd.GeoDataFrame:

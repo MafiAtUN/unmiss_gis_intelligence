@@ -3,6 +3,7 @@ import requests
 import time
 from typing import List, Dict, Any, Optional, Tuple
 from app.core.scrapers.base import BaseScraper
+from app.utils.logging import log_error, log_structured
 
 
 class OSMScraper(BaseScraper):
@@ -125,10 +126,21 @@ class OSMScraper(BaseScraper):
             return results
         
         except requests.exceptions.RequestException as e:
-            print(f"Error querying Overpass API: {e}")
+            log_error(e, {
+                "module": "osm_scraper",
+                "function": "search_village",
+                "village_name": name,
+                "bbox": bbox,
+                "overpass_url": self.overpass_url
+            })
             return []
         except Exception as e:
-            print(f"Error parsing OSM results: {e}")
+            log_error(e, {
+                "module": "osm_scraper",
+                "function": "search_village",
+                "village_name": name,
+                "bbox": bbox
+            })
             return []
     
     def get_coordinates(self, place_id: str) -> Optional[Tuple[float, float]]:
@@ -178,7 +190,11 @@ class OSMScraper(BaseScraper):
                     return (center.get("lon"), center.get("lat"))
         
         except Exception as e:
-            print(f"Error getting coordinates from OSM: {e}")
+            log_error(e, {
+                "module": "osm_scraper",
+                "function": "get_coordinates",
+                "place_id": place_id
+            })
         
         return None
 

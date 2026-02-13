@@ -1,12 +1,20 @@
 """Data Manager page for uploading and ingesting geospatial data."""
 import streamlit as st
+import sys
+from pathlib import Path
+
+# Add project root to Python path to ensure imports work
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import geopandas as gpd
 import pandas as pd
-from pathlib import Path
 import io
 from app.core.duckdb_store import DuckDBStore
 from app.core.geocoder import Geocoder
 from app.core.config import DUCKDB_PATH, LAYER_NAMES, INGESTED_DIR
+from app.core.security import sanitize_layer_name
 
 
 # Initialize session state if not already initialized
@@ -233,71 +241,71 @@ with tab2:
 
     # GeoJSON upload
     if upload_type == "GeoJSON (Admin layers)" and uploaded_file:
-    st.subheader("GeoJSON Configuration")
-    
-    layer_name = st.selectbox(
-        "Select layer:",
-        options=list(LAYER_NAMES.values())
-    )
-    
-    name_field = st.text_input(
-        "Name field:",
-        value="name",
-        help="Field name containing feature names"
-    )
-    
-    if st.button("Ingest GeoJSON", type="primary"):
-        try:
-            # Read GeoJSON
-            gdf = gpd.read_file(uploaded_file)
-            
-            # Validate
-            if gdf.empty:
-                st.error("GeoJSON file is empty")
-            elif name_field not in gdf.columns:
-                st.error(f"Name field '{name_field}' not found in GeoJSON")
-            else:
-                with st.spinner("Ingesting data..."):
-                    db_store.ingest_geojson(layer_name, gdf, name_field)
-                
-                st.success(f"✅ Ingested {len(gdf)} features into {layer_name}")
-                
-                # Show preview
-                st.dataframe(gdf.head(10))
+        st.subheader("GeoJSON Configuration")
         
-        except Exception as e:
-            st.error(f"Error ingesting GeoJSON: {e}")
+        layer_name = st.selectbox(
+            "Select layer:",
+            options=list(LAYER_NAMES.values())
+        )
+        
+        name_field = st.text_input(
+            "Name field:",
+            value="name",
+            help="Field name containing feature names"
+        )
+        
+        if st.button("Ingest GeoJSON", type="primary"):
+            try:
+                # Read GeoJSON
+                gdf = gpd.read_file(uploaded_file)
+                
+                # Validate
+                if gdf.empty:
+                    st.error("GeoJSON file is empty")
+                elif name_field not in gdf.columns:
+                    st.error(f"Name field '{name_field}' not found in GeoJSON")
+                else:
+                    with st.spinner("Ingesting data..."):
+                        db_store.ingest_geojson(layer_name, gdf, name_field)
+                    
+                    st.success(f"✅ Ingested {len(gdf)} features into {layer_name}")
+                    
+                    # Show preview
+                    st.dataframe(gdf.head(10))
+            
+            except Exception as e:
+                st.error(f"Error ingesting GeoJSON: {e}")
 
     # CSV upload
     if upload_type == "CSV (Settlements)" and uploaded_file:
-    st.subheader("CSV Configuration")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        lon_field = st.text_input("Longitude field:", value="lon")
-    with col2:
-        lat_field = st.text_input("Latitude field:", value="lat")
-    with col3:
-        name_field = st.text_input("Name field:", value="name")
-    
-    if st.button("Ingest CSV", type="primary"):
-        try:
-            # Save uploaded file temporarily
-            temp_path = INGESTED_DIR / uploaded_file.name
-            with open(temp_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            
-            with st.spinner("Ingesting data..."):
-                db_store.ingest_settlements_csv(temp_path, lon_field, lat_field, name_field)
-            
-            st.success("✅ CSV ingested successfully")
-            
-            # Show preview
-            df = pd.read_csv(temp_path)
-            st.dataframe(df.head(10))
+        st.subheader("CSV Configuration")
         
-        except Exception as e:
-            st.error(f"Error ingesting CSV: {e}")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            lon_field = st.text_input("Longitude field:", value="lon")
+        with col2:
+            lat_field = st.text_input("Latitude field:", value="lat")
+        with col3:
+            name_field = st.text_input("Name field:", value="name")
+        
+        if st.button("Ingest CSV", type="primary"):
+            try:
+                # Save uploaded file temporarily
+                temp_path = INGESTED_DIR / uploaded_file.name
+                with open(temp_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                
+                with st.spinner("Ingesting data..."):
+                    db_store.ingest_settlements_csv(temp_path, lon_field, lat_field, name_field)
+                
+                st.success("✅ CSV ingested successfully")
+                
+                # Show preview
+                df = pd.read_csv(temp_path)
+                st.dataframe(df.head(10))
+            
+            except Exception as e:
+                st.error(f"Error ingesting CSV: {e}")
 
 # Tab 3: Build Index
 with tab3:
@@ -315,8 +323,13 @@ with tab3:
 
     for idx, (key, layer_name) in enumerate(LAYER_NAMES.items()):
         with status_cols[idx]:
-            count = db_store.conn.execute(
-                f"SELECT COUNT(*) FROM {layer_name}"
-            ).fetchone()[0]
-            st.metric(layer_name, count)
+            # Validate layer name to prevent SQL injection
+            sanitized_layer = sanitize_layer_name(layer_name)
+            if sanitized_layer:
+                count = db_store.conn.execute(
+                    f"SELECT COUNT(*) FROM {sanitized_layer}"
+                ).fetchone()[0]
+                st.metric(layer_name, count)
+            else:
+                st.metric(layer_name, "N/A")
 

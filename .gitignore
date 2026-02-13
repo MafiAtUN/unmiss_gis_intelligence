@@ -52,6 +52,9 @@ data/duckdb/*.duckdb.wal
 # Logs
 *.log
 logs/
+streamlit*.log
+streamlit.pid
+*.pid
 
 # Test files
 test_*.py

@@ -5,6 +5,7 @@ from typing import Dict, Optional, List
 from pathlib import Path
 from app.core.centroids import compute_centroid
 from app.core.config import PROJECT_ROOT
+from app.utils.logging import log_error
 
 
 def spatial_join_point_to_polygons(
@@ -295,7 +296,12 @@ def detect_admin_boundaries_from_point(
     
     except Exception as e:
         # Log error but return empty dict
-        print(f"Error detecting admin boundaries: {e}")
+        log_error(e, {
+            "module": "spatial",
+            "function": "get_admin_hierarchy",
+            "lon": lon,
+            "lat": lat
+        })
     
     return {
         "state": None,

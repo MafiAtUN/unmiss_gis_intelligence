@@ -1,0 +1,91 @@
+================================================================================
+LOCATION EXTRACTION ACCURACY REPORT
+================================================================================
+Generated: 2025-12-24 00:19:59.692790
+Input file: resources/casualty_tracking/casualty_matrix.xlsx
+Rows evaluated: 1000
+
+SUMMARY METRICS
+--------------------------------------------------------------------------------
+Extraction Success Rate: 877/1000 (87.7%)
+Location String Match Rate: 819/877 (93.4%)
+Payam Match Rate: 0/877 (0.0%)
+County Match Rate: 0/877 (0.0%)
+State Match Rate: 0/877 (0.0%)
+Coordinate Match Rate (within 5km): 0/877 (0.0%)
+
+ERROR ANALYSIS
+--------------------------------------------------------------------------------
+Total location string mismatches: 58
+
+Common failure patterns:
+  High similarity (0.7-0.8): 3 cases
+  Medium similarity (0.5-0.7): 24 cases
+  Low similarity (<0.5): 31 cases
+
+Sample failures:
+  1. Row 47
+     Extracted: Yirol town, Yirol West County
+     Actual: Wun-thou Boma of Yali Payam of Yirol East
+     Similarity: 0.58
+
+  2. Row 89
+     Extracted: Al Jazira state, Southeast Khartoum
+     Actual: Kuajok town market in Gogrial West 
+     Similarity: 0.41
+
+  3. Row 90
+     Extracted: Al Jazira state, Southeast Khartoum
+     Actual: Kuajok town market in Gogrial West 
+     Similarity: 0.41
+
+  4. Row 96
+     Extracted: Tonj South County and the Dinka Gok in Cueibet
+     Actual: Cuei-Chok village, Manyangok Payam, Tonj South
+     Similarity: 0.60
+
+  5. Row 97
+     Extracted: Tonj South County and the Dinka Gok in Cueibet
+     Actual: Cuei-Chok village, Manyangok Payam, Tonj South
+     Similarity: 0.60
+
+  6. Row 101
+     Extracted: Juba City, Central Equatoria State
+     Actual: markets of Konyo-konyo and Hai Thoura in the new site and Mia Saba residential areas
+     Similarity: 0.53
+
+  7. Row 102
+     Extracted: Juba City, Central Equatoria State
+     Actual: markets of Konyo-konyo and Hai Thoura in the new site and Mia Saba residential areas
+     Similarity: 0.53
+
+  8. Row 103
+     Extracted: Juba City, Central Equatoria State
+     Actual: Malakal town
+     Similarity: 0.42
+
+  9. Row 104
+     Extracted: Juba City, Central Equatoria State
+     Actual: Malakal town
+     Similarity: 0.42
+
+  10. Row 105
+     Extracted: Aweil town, Wanyjok
+     Actual: Poktap, Duk County, Jonglei State
+     Similarity: 0.39
+
+RECOMMENDATIONS
+--------------------------------------------------------------------------------
+1. Improve extraction success rate:
+   - Add more regex patterns for edge cases
+   - Use LLM extraction for complex descriptions
+   - Handle multi-line descriptions better
+3. Enable geocoding:
+   - Ensure database is not locked
+   - Test geocoding separately to verify accuracy
+
+4. General improvements:
+   - Use LLM extraction for better accuracy on complex cases
+   - Implement feedback loop to learn from corrections
+   - Add validation rules for extracted locations
+   - Create confidence scoring for extractions

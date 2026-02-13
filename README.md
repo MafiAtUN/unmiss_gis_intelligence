@@ -9,6 +9,7 @@ A production-quality Streamlit application for geocoding free text locations in 
 - **DuckDB Storage**: Fast local database for geospatial data and caching
 - **Azure AI Integration**: Optional AI-powered text parsing for messy addresses
 - **Streamlit UI**: Multi-page interface for geocoding, data management, settings, and diagnostics
+- **Comprehensive Error Handling**: Structured logging, error tracking (Sentry), and error dashboard for debugging
 
 ## Architecture
 
@@ -47,6 +48,8 @@ cp .env.example .env
 5. Edit `.env` with your configuration:
    - Azure AI Foundry credentials (required for AI extraction, enabled by default for better accuracy)
    - Set `ENABLE_AI_EXTRACTION=false` to disable if Azure credentials are not available
+   - Optional: Sentry DSN for error tracking (see ERROR_HANDLING.md)
+   - Optional: Logging configuration (LOG_LEVEL, LOG_FILE, etc.)
 
 6. Run the application:
 ```bash
@@ -193,12 +196,25 @@ README.md              # This file
 - **Caching**: Query cache prevents repeated computation
 - **Target**: 100+ queries/second for cached results
 
+## Error Handling & Logging
+
+The application includes comprehensive error handling:
+
+- **Structured JSON Logging**: All errors logged with full context (module, function, traceback)
+- **File Logging**: Automatic log rotation (10MB files, 5 backups) in `data/logs/app.log`
+- **Error Dashboard**: View and analyze errors via Streamlit UI (Error Logs page)
+- **Sentry Integration**: Optional error tracking for production monitoring
+- **Global Exception Handler**: Catches uncaught exceptions and prevents silent crashes
+
+See [ERROR_HANDLING.md](ERROR_HANDLING.md) for detailed documentation.
+
 ## Security
 
 - All secrets loaded from environment variables
 - No hardcoded credentials
 - `.env` file excluded from version control
 - Azure Managed Identity support ready (key-based for now)
+- Sensitive data automatically filtered from error logs
 
 ## License
 

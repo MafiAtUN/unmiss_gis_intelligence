@@ -3,6 +3,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Set, Optional
 from app.core.config import PROJECT_ROOT
+from app.utils.logging import log_error
 
 
 def load_hierarchy_from_csv(csv_path: Optional[Path] = None) -> Dict[str, Dict[str, List[str]]]:
@@ -77,7 +78,11 @@ def load_hierarchy_from_csv(csv_path: Optional[Path] = None) -> Dict[str, Dict[s
         }
     
     except Exception as e:
-        print(f"Error loading hierarchy from CSV: {e}")
+        log_error(e, {
+            "module": "admin_hierarchy",
+            "function": "load_hierarchy_from_csv",
+            "csv_path": str(csv_path)
+        })
         return {
             "state_to_counties": {},
             "county_to_payams": {},
